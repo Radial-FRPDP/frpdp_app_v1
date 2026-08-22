@@ -1,26 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 
+/*
+ * Design tokens matched to the Field Readiness Programme brand system
+ * (source: figma export index.css / buttons.pdf / color.pdf).
+ * Do not rename these — every page component below references them by
+ * inline style var() as well as these utility classes.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f4f4;
+  --surface: #ffffff;
+  --ink: #323232;
+  --ink-muted: #646464;
+  --ink-faint: #969696;
+  --line: #d8d8d8;
+
+  /* Brand */
+  --green: #058812;
+  --green-dark: #074a0e;
+  --green-darker: #0d1f0e;
+  --gold: #fbbd15;
+  --gold-ink: #846205;
+  --yellow: #ede82c;
+  --navy: #1b4f8a;
+  --red: #9b2335;
+  --orange: #e05c00;
+
+  /* Legacy aliases kept so earlier-written components keep compiling */
+  --ember: #e05c00;
+  --done: #058812;
+  --risk: #9b2335;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* , *::before, *::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body, #root {
+  height: 100%;
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
 }
+
+.font-heading {
+  font-family: 'Montserrat', sans-serif;
+}
+
+/* Elevation shadows from design spec */
+.shadow-elev-1 { box-shadow: 0 1px 1px rgba(0,0,0,0.02), 0 2px 4px rgba(0,0,0,0.04); }
+.shadow-elev-2 { box-shadow: 0 1px 4px rgba(0,0,0,0.04), 0 4px 10px rgba(0,0,0,0.08); }
+.shadow-elev-3 { box-shadow: 0 2px 20px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.08); }
+.shadow-elev-4 { box-shadow: 0 8px 20px rgba(0,0,0,0.06), 0 24px 60px rgba(0,0,0,0.12); }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+input:focus, select:focus, textarea:focus { outline: none; }
+
+.card {
+  background: var(--surface);
+  border-radius: 1rem;
+}
+
+.btn-primary {
+  background: var(--green);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  padding: 0.75rem 1.5rem;
+  transition: background 0.2s ease;
+}
+.btn-primary:hover { background: var(--green-dark); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink-muted);
+  border: 2px solid var(--line);
+  border-radius: 0.75rem;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  padding: 0.6rem 1.25rem;
+  transition: border-color 0.2s ease;
+}
+.btn-secondary:hover { border-color: var(--ink-faint); }
+
+.input {
+  border: 2px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.7rem 1rem;
+  width: 100%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.875rem;
+}
+
+.label {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.badge {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+.badge-pending { background: rgba(251,189,21,0.13); color: var(--gold-ink); }
+.badge-verified { background: rgba(5,136,18,0.12); color: var(--green); }
+.badge-issue { background: rgba(224,92,0,0.12); color: var(--orange); }
+.badge-rejected { background: rgba(155,35,53,0.12); color: var(--red); }
