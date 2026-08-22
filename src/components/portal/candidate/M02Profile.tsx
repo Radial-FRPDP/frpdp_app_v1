@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { DocType } from "@/lib/database.types";
+import { NIGERIA_STATES } from "@/lib/nigeria-zones";
 
 type WizardStep = "personal" | "identity" | "documents" | "submit";
 
@@ -17,6 +18,12 @@ const STEPS: { id: WizardStep; label: string }[] = [
 interface ProfileRow {
   date_of_birth: string | null;
   address: string | null;
+  lga_of_residence: string | null;
+  state_of_residence: string | null;
+  next_of_kin_name: string | null;
+  next_of_kin_phone: string | null;
+  next_of_kin_relationship: string | null;
+  next_of_kin_address: string | null;
   nin: string | null;
   nin_verification_status: string;
   bvn: string | null;
@@ -38,6 +45,14 @@ interface Candidate {
   email: string;
   phone: string | null;
   status: string;
+  date_of_birth: string | null;
+}
+
+function formatDob(dob: string | null): string {
+  if (!dob) return "Not on file — contact your programme coordinator";
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return "Not on file — contact your programme coordinator";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
 const DOC_TYPES: { type: DocType; label: string; required: boolean }[] = [
@@ -92,8 +107,13 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
   const [step, setStep] = useState<WizardStep>("personal");
 
   const [phone, setPhone] = useState(candidate.phone ?? "");
-  const [dateOfBirth, setDateOfBirth] = useState(profile?.date_of_birth ?? "");
   const [address, setAddress] = useState(profile?.address ?? "");
+  const [lgaOfResidence, setLgaOfResidence] = useState(profile?.lga_of_residence ?? "");
+  const [stateOfResidence, setStateOfResidence] = useState(profile?.state_of_residence ?? "");
+  const [nokName, setNokName] = useState(profile?.next_of_kin_name ?? "");
+  const [nokPhone, setNokPhone] = useState(profile?.next_of_kin_phone ?? "");
+  const [nokRelationship, setNokRelationship] = useState(profile?.next_of_kin_relationship ?? "");
+  const [nokAddress, setNokAddress] = useState(profile?.next_of_kin_address ?? "");
   const [savingPersonal, setSavingPersonal] = useState(false);
 
   const [nin, setNin] = useState(profile?.nin ?? "");
@@ -117,7 +137,19 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
     setError("");
     setSavingPersonal(true);
     const [{ error: profErr }, { error: candErr }] = await Promise.all([
-      supabase.from("profiles").upsert({ candidate_id: candidate.id, date_of_birth: dateOfBirth || null, address }, { onConflict: "candidate_id" }),
+      supabase.from("profiles").upsert(
+        {
+          candidate_id: candidate.id,
+          address,
+          lga_of_residence: lgaOfResidence || null,
+          state_of_residence: stateOfResidence || null,
+          next_of_kin_name: nokName,
+          next_of_kin_phone: nokPhone,
+          next_of_kin_relationship: nokRelationship,
+          next_of_kin_address: nokAddress || null,
+        },
+        { onConflict: "candidate_id" }
+      ),
       supabase.from("candidates").update({ phone: phone || null }).eq("id", candidate.id),
     ]);
     setSavingPersonal(false);
@@ -130,8 +162,8 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
 
   async function verifyNin() {
     setError("");
-    if (!dateOfBirth) {
-      setError("Add your date of birth in Personal Details first.");
+    if (!candidate.date_of_birth) {
+      setError("Your date of birth isn't on file yet — contact your programme coordinator before verifying your NIN.");
       return;
     }
     setVerifyingNin(true);
@@ -139,7 +171,7 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
     const res = await fetch("/api/verify/nin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nin, fullName: candidate.full_name, dateOfBirth }),
+      body: JSON.stringify({ nin, fullName: candidate.full_name, dateOfBirth: candidate.date_of_birth }),
     });
     const body = await res.json();
     setVerifyingNin(false);
@@ -247,33 +279,80 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">{error}</div>}
 
       {step === "personal" && (
-        <div className="bg-white rounded-2xl p-6 shadow-elev-2 space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Full name</label>
-              <input value={candidate.full_name} disabled className="input mt-1 opacity-60" />
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl p-6 shadow-elev-2 space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Full name</label>
+                <input value={candidate.full_name} disabled className="input mt-1 opacity-60" />
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input value={candidate.email} disabled className="input mt-1 opacity-60" />
+              </div>
             </div>
-            <div>
-              <label className="label">Email</label>
-              <input value={candidate.email} disabled className="input mt-1 opacity-60" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Phone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input mt-1" placeholder="0803xxxxxxx" />
+              </div>
+              <div>
+                <label className="label">Date of birth</label>
+                <input value={formatDob(candidate.date_of_birth)} disabled className="input mt-1 opacity-60" />
+                <p className="text-[11px] text-[#969696] mt-1">From your NCDMB nomination — confirmed on M-01.</p>
+              </div>
             </div>
           </div>
-          <div className="grid sm:grid-cols-2 gap-4">
+
+          <div className="bg-white rounded-2xl p-6 shadow-elev-2 space-y-4">
+            <h3 className="font-heading font-bold text-sm text-[#323232]">Residential Address</h3>
             <div>
-              <label className="label">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input mt-1" placeholder="0803xxxxxxx" />
+              <label className="label">Current Residential Address</label>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} className="input mt-1" placeholder="Street address, city" />
             </div>
-            <div>
-              <label className="label">Date of birth</label>
-              <input type="date" required value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} className="input mt-1" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">LGA of Residence</label>
+                <input value={lgaOfResidence} onChange={(e) => setLgaOfResidence(e.target.value)} className="input mt-1" placeholder="e.g. Ikeja" />
+              </div>
+              <div>
+                <label className="label">State of Residence</label>
+                <select value={stateOfResidence} onChange={(e) => setStateOfResidence(e.target.value)} className="input mt-1">
+                  <option value="">Select state…</option>
+                  {NIGERIA_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
-          <div>
-            <label className="label">Address</label>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} className="input mt-1" />
+
+          <div className="bg-white rounded-2xl p-6 shadow-elev-2 space-y-4">
+            <h3 className="font-heading font-bold text-sm text-[#323232]">Next of Kin</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Full Name</label>
+                <input value={nokName} onChange={(e) => setNokName(e.target.value)} className="input mt-1" />
+              </div>
+              <div>
+                <label className="label">Phone Number</label>
+                <input value={nokPhone} onChange={(e) => setNokPhone(e.target.value)} className="input mt-1" placeholder="0803xxxxxxx" />
+              </div>
+            </div>
+            <div>
+              <label className="label">Relationship</label>
+              <input value={nokRelationship} onChange={(e) => setNokRelationship(e.target.value)} className="input mt-1" placeholder="e.g. Mother, Spouse, Sibling" />
+            </div>
+            <div>
+              <label className="label">Address (optional)</label>
+              <input value={nokAddress} onChange={(e) => setNokAddress(e.target.value)} className="input mt-1" />
+            </div>
           </div>
+
           <div className="flex justify-end pt-2">
-            <button onClick={savePersonal} disabled={savingPersonal || !dateOfBirth} className="btn-primary">
+            <button onClick={savePersonal} disabled={savingPersonal || !nokName || !nokPhone || !nokRelationship} className="btn-primary">
               {savingPersonal ? "Saving…" : "Continue →"}
             </button>
           </div>

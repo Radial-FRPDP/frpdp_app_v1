@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20.9.0"
+  # Netlify sets NODE_ENV=production during the build, which makes plain
+  # `npm install`/`npm ci` skip devDependencies. Tailwind's build-time
+  # packages are pinned to "dependencies" in package.json for exactly this
+  # reason, but this flag is kept as a second guard so a future package
+  # moved back into devDependencies doesn't silently break CSS again.
+  NPM_FLAGS = "--include=dev"

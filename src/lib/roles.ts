@@ -94,18 +94,23 @@ export type CandidateModuleStatus = "done" | "current" | "next" | "locked";
 /** Real progress derivation — replaces the Figma demo's hardcoded map. */
 export function candidateModuleStatus(
   candidateStatus: string,
-  hasConfirmedBooking: boolean
+  hasConfirmedBooking: boolean,
+  nominationConfirmed: boolean
 ): Record<string, CandidateModuleStatus> {
   const profileDone = candidateStatus === "profile_complete" || candidateStatus === "verified";
   const profileStarted = candidateStatus === "profile_in_progress";
 
-  const m02: CandidateModuleStatus = profileDone ? "done" : "current";
+  // M-01 (Nomination/Welcome) must be explicitly confirmed before M-02
+  // unlocks — matches the reference's confirmation gate, which the app
+  // previously had no equivalent for (M-01 used to always read "done").
+  const m01: CandidateModuleStatus = nominationConfirmed ? "done" : "current";
+  const m02: CandidateModuleStatus = !nominationConfirmed ? "locked" : profileDone ? "done" : "current";
   const m03: CandidateModuleStatus = !profileDone ? "locked" : hasConfirmedBooking ? "done" : "current";
   const m04: CandidateModuleStatus = hasConfirmedBooking ? "current" : "locked";
 
   return {
-    "M-01": "done",
-    "M-02": profileStarted || !profileDone ? "current" : m02,
+    "M-01": m01,
+    "M-02": nominationConfirmed && (profileStarted || !profileDone) ? "current" : m02,
     "M-03": m03,
     "M-04": m04,
     "M-05": "locked",

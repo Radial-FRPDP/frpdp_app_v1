@@ -64,11 +64,14 @@ export default async function PortalM02Page() {
 
   const { data: candidate } = await supabase
     .from("candidates")
-    .select("id, full_name, email, phone, status")
+    .select("id, full_name, email, phone, status, date_of_birth")
     .eq("auth_user_id", user!.id)
     .maybeSingle();
 
   if (!candidate) redirect("/login");
+  // M-01's nomination-confirmation gate — a candidate who hasn't confirmed
+  // yet shouldn't be able to jump straight here via a direct URL.
+  if (!session.candidateNominationConfirmed) redirect("/portal/m01");
 
   const [{ data: profile }, { data: documents }] = await Promise.all([
     supabase.from("profiles").select("*").eq("candidate_id", candidate.id).maybeSingle(),

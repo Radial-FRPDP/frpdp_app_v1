@@ -3,6 +3,7 @@ import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supab
 import { parseCsv, parseXlsx, isXlsxFile, type ParsedRow } from "@/lib/validation/intakeParser";
 import { sendEmail } from "@/lib/email/resend";
 import { validationReportEmail } from "@/lib/email/templates";
+import { stateToZone } from "@/lib/nigeria-zones";
 
 export const runtime = "nodejs";
 
@@ -107,6 +108,15 @@ export async function POST(req: NextRequest) {
         email: r.email || `unknown-row-${r.rowNumber}@no-email.invalid`,
         phone: r.phone || null,
         jqs_number: r.jqsNumber || null,
+        // Previously these three were parsed and used for age-ineligibility
+        // but then discarded — only source_row's raw JSONB kept them, which
+        // isn't reliably queryable for the zone/discipline breakdowns the
+        // reference's dashboards need. See 0008_candidate_fields_and_exceptions.sql.
+        gender: r.gender || null,
+        discipline: r.discipline || null,
+        date_of_birth: r.dateOfBirth || null,
+        state_of_origin: r.stateOfOrigin || null,
+        zone: r.stateOfOrigin ? stateToZone(r.stateOfOrigin) : null,
         source_row: r.raw,
         duplicate_of: (r as ParsedRow & { _dbDuplicateOf?: string })._dbDuplicateOf ?? null,
         validation_issues: r.problems,

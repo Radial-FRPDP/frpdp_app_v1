@@ -9,6 +9,7 @@ export interface PortalSession {
   notifications: PortalNotification[];
   candidateStatus?: Record<string, CandidateModuleStatus>;
   candidateId?: string;
+  candidateNominationConfirmed?: boolean;
 }
 
 function timeAgo(iso: string): string {
@@ -87,7 +88,7 @@ export const getPortalSession = cache(async (): Promise<PortalSession | null> =>
 
   const { data: candidate } = await supabase
     .from("candidates")
-    .select("id, full_name, status")
+    .select("id, full_name, status, nomination_confirmed_at")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -126,8 +127,9 @@ export const getPortalSession = cache(async (): Promise<PortalSession | null> =>
         initials: initialsOf(candidate.full_name),
       },
       notifications,
-      candidateStatus: candidateModuleStatus(candidate.status, !!booking),
+      candidateStatus: candidateModuleStatus(candidate.status, !!booking, !!candidate.nomination_confirmed_at),
       candidateId: candidate.id,
+      candidateNominationConfirmed: !!candidate.nomination_confirmed_at,
     };
   }
 

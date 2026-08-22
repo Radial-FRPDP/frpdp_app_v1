@@ -39,6 +39,11 @@ export type GeoZone =
 export type CentreStatus = "active" | "unavailable";
 export type DuplicateDecision = "pending" | "replace" | "discard";
 export type ExamSessionStatus = "checked_in" | "in_progress" | "submitted" | "expired";
+export type BookingExceptionType = "centre_change" | "missed_window" | "duplicate_booking";
+export type BookingExceptionStatus = "pending" | "approved" | "rejected";
+export type ExamIncidentCategory = "device_failure" | "identity_mismatch" | "late_arrival" | "other";
+export type ExamIncidentSeverity = "low" | "medium" | "high";
+export type ExamIncidentStatus = "pending" | "reviewed" | "closed";
 export interface ExamChoice {
   id: string;
   text: string;
@@ -131,6 +136,12 @@ export interface Database {
           duplicate_decision: DuplicateDecision | null;
           duplicate_decision_by: string | null;
           duplicate_decision_at: string | null;
+          gender: string | null;
+          discipline: string | null;
+          date_of_birth: string | null;
+          state_of_origin: string | null;
+          zone: GeoZone | null;
+          nomination_confirmed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -167,6 +178,12 @@ export interface Database {
           bank_account_name: string | null;
           bank_account_last4: string | null;
           bank_name: string | null;
+          next_of_kin_name: string | null;
+          next_of_kin_phone: string | null;
+          next_of_kin_relationship: string | null;
+          next_of_kin_address: string | null;
+          lga_of_residence: string | null;
+          state_of_residence: string | null;
           completed_at: string | null;
           created_at: string;
           updated_at: string;
@@ -337,6 +354,48 @@ export interface Database {
           recipient_email: string;
         };
         Update: Partial<Database["public"]["Tables"]["notifications_log"]["Row"]>;
+        Relationships: [];
+      };
+      booking_exceptions: {
+        Row: {
+          id: string;
+          candidate_id: string;
+          booking_id: string | null;
+          type: BookingExceptionType;
+          requested_slot_id: string | null;
+          reason: string | null;
+          status: BookingExceptionStatus;
+          requested_at: string;
+          decided_by: string | null;
+          decided_at: string | null;
+          decision_note: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["booking_exceptions"]["Row"]> & {
+          candidate_id: string;
+          type: BookingExceptionType;
+        };
+        Update: Partial<Database["public"]["Tables"]["booking_exceptions"]["Row"]>;
+        Relationships: [];
+      };
+      exam_incidents: {
+        Row: {
+          id: string;
+          exam_session_id: string;
+          reported_by: string | null;
+          category: ExamIncidentCategory;
+          severity: ExamIncidentSeverity;
+          description: string | null;
+          status: ExamIncidentStatus;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          resolution_note: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["exam_incidents"]["Row"]> & {
+          exam_session_id: string;
+          category: ExamIncidentCategory;
+        };
+        Update: Partial<Database["public"]["Tables"]["exam_incidents"]["Row"]>;
         Relationships: [];
       };
     };
