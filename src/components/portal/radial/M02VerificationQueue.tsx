@@ -170,7 +170,15 @@ function ReviewField({
 
 export function M02VerificationQueue({ initialRows }: { initialRows: QueueRow[] }) {
   const router = useRouter();
-  const [rows] = useState(initialRows);
+  // Not useState(initialRows) -- this component is never unmounted by
+  // router.refresh() (same instance, same key), so a state snapshot taken
+  // on first render would stay frozen forever no matter how many times
+  // the parent Server Component re-fetches. Reading the prop directly
+  // means a fresh initialRows after refresh() actually reaches the UI --
+  // this is what was making Verify/Mark failed/Flag issue look like they
+  // did nothing (the write succeeded; only this queue's own display of it
+  // didn't).
+  const rows = initialRows;
   const [tab, setTab] = useState<"queue" | "messages">("queue");
 
   function refresh() {
