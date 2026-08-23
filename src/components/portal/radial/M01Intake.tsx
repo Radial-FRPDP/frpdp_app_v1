@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 type WorkflowStep = "upload" | "validate" | "review" | "summary" | "dispatch";
 
@@ -51,6 +53,221 @@ function StatusBadge({ status }: { status: string }) {
     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-heading font-bold" style={{ color: s.color, background: s.bg }}>
       {s.label}
     </span>
+  );
+}
+
+export interface CandidateListItem {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  jqsNumber: string | null;
+  gender: string | null;
+  discipline: string | null;
+  status: string;
+  createdAt: string;
+  batchFilename: string | null;
+}
+
+const CANDIDATE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending_review: { label: "Pending Review", color: "#646464", bg: "#64646415" },
+  invited: { label: "Invited", color: "#1B4F8A", bg: "#1B4F8A15" },
+  profile_in_progress: { label: "Profile In Progress", color: "#846205", bg: "#FBBD1520" },
+  profile_complete: { label: "Profile Complete", color: "#058812", bg: "#05881215" },
+  verified: { label: "Verified", color: "#058812", bg: "#05881220" },
+  rejected: { label: "Rejected", color: "#9B2335", bg: "#9B233515" },
+};
+
+function CandidateStatusBadge({ status }: { status: string }) {
+  const s = CANDIDATE_STATUS_META[status] ?? CANDIDATE_STATUS_META.pending_review;
+  return (
+    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-heading font-bold whitespace-nowrap" style={{ color: s.color, background: s.bg }}>
+      {s.label}
+    </span>
+  );
+}
+
+function CandidateListView({
+  candidates,
+  onDeleted,
+  onStartUpload,
+}: {
+  candidates: CandidateListItem[];
+  onDeleted: (ids: string[]) => void;
+  onStartUpload: () => void;
+}) {
+  const supabase = createClient();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  const filtered = candidates.filter((c) => {
+    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return (
+      c.fullName.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.jqsNumber ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
+
+  function toggleAll() {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        const next = new Set(prev);
+        filtered.forEach((c) => next.delete(c.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filtered.forEach((c) => next.add(c.id));
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    const ids = Array.from(selected);
+    const { error: err } = await supabase.from("candidates").delete().in("id", ids);
+    setDeleting(false);
+    if (err) {
+      setError(
+        err.message.includes("foreign key")
+          ? "Couldn't delete one or more of these — another record (e.g. a duplicate flagged against one of them) still references it."
+          : err.message
+      );
+      return;
+    }
+    onDeleted(ids);
+    setSelected(new Set());
+    setConfirming(false);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl p-5 shadow-elev-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 flex-1 min-w-[240px]">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, email, or JQS number…"
+              className="input"
+              style={{ maxWidth: 320 }}
+            />
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input" style={{ maxWidth: 200 }}>
+              <option value="all">All statuses</option>
+              {Object.entries(CANDIDATE_STATUS_META).map(([key, meta]) => (
+                <option key={key} value={key}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {selected.size > 0 && !confirming && (
+              <button
+                onClick={() => setConfirming(true)}
+                className="px-4 py-2.5 rounded-xl text-sm font-heading font-bold border-2 transition-colors"
+                style={{ borderColor: "#9B2335", color: "#9B2335" }}
+              >
+                Delete Selected ({selected.size})
+              </button>
+            )}
+            <button onClick={onStartUpload} className="btn-primary">
+              + New CSV Import
+            </button>
+          </div>
+        </div>
+
+        {confirming && (
+          <div className="mb-4 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap" style={{ background: "#9B233510", border: "1px solid #9B233530" }}>
+            <p className="text-sm text-[#323232]">
+              Permanently delete <strong>{selected.size}</strong> candidate record{selected.size === 1 ? "" : "s"}, including their profile, documents,
+              and booking data? This can&apos;t be undone.
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => setConfirming(false)} disabled={deleting} className="btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-sm font-heading font-bold text-white transition-colors disabled:opacity-50"
+                style={{ background: "#9B2335" }}
+              >
+                {deleting ? "Deleting…" : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && <div className="mb-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">{error}</div>}
+
+        {candidates.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="font-heading font-bold text-[#323232] mb-1">No candidates yet</p>
+            <p className="text-sm text-[#969696] mb-6">Start your first CSV import to bring candidates into the programme.</p>
+            <button onClick={onStartUpload} className="btn-primary">
+              + New CSV Import
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: "#f4f4f4" }}>
+                  <th className="px-4 py-3 w-10">
+                    <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} />
+                  </th>
+                  {["JQS Number", "Full Name", "Email", "Gender / Discipline", "Status", "Batch", "Imported"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-heading font-bold uppercase tracking-wider text-[#646464]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: "#f4f4f4" }}>
+                {filtered.map((c) => (
+                  <tr key={c.id} className="hover:bg-[#f4f4f4] transition-colors">
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} />
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-[#323232] font-medium">{c.jqsNumber || "—"}</td>
+                    <td className="px-4 py-3 font-heading font-semibold text-[#323232]">{c.fullName}</td>
+                    <td className="px-4 py-3 text-[12px] text-[#646464]">{c.email}</td>
+                    <td className="px-4 py-3 text-[12px] text-[#646464]">
+                      {c.gender || "—"} {c.discipline ? `· ${c.discipline}` : ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      <CandidateStatusBadge status={c.status} />
+                    </td>
+                    <td className="px-4 py-3 text-[12px] text-[#969696]">{c.batchFilename || "—"}</td>
+                    <td className="px-4 py-3 text-[12px] text-[#969696]">{new Date(c.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && <p className="text-sm text-[#969696] text-center py-10">No candidates match your search.</p>}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -530,7 +747,7 @@ function SummaryStep({ result, onNext }: { result: UploadResponse; onNext: () =>
   );
 }
 
-function DispatchStep({ result, pmName }: { result: UploadResponse; pmName: string }) {
+function DispatchStep({ result, pmName, onFinished }: { result: UploadResponse; pmName: string; onFinished: () => void }) {
   const [approved, setApproved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dispatched, setDispatched] = useState<{ invitesSent: number; failed: number; dispatchedAt: string } | null>(null);
@@ -578,6 +795,9 @@ function DispatchStep({ result, pmName }: { result: UploadResponse; pmName: stri
             </div>
           ))}
         </div>
+        <button onClick={onFinished} className="btn-primary mt-2">
+          Back to Candidates →
+        </button>
       </div>
     );
   }
@@ -646,14 +866,68 @@ function DispatchStep({ result, pmName }: { result: UploadResponse; pmName: stri
   );
 }
 
-export function M01Intake({ pmName }: { pmName: string }) {
+export function M01Intake({ pmName, initialCandidates }: { pmName: string; initialCandidates: CandidateListItem[] }) {
+  const router = useRouter();
+  const [view, setView] = useState<"list" | "wizard">("list");
+  const [candidates, setCandidates] = useState(initialCandidates);
   const [step, setStep] = useState<WorkflowStep>("upload");
   const [result, setResult] = useState<UploadResponse | null>(null);
   const stepIndex = WORKFLOW_STEPS.findIndex((s) => s.id === step);
 
+  // Server-fetched candidate list only reflects what was on the page at
+  // load time — resync whenever a router.refresh() brings fresh props in
+  // (e.g. after returning from a new import/dispatch).
+  useEffect(() => {
+    setCandidates(initialCandidates);
+  }, [initialCandidates]);
+
+  function backToList() {
+    setView("list");
+    setStep("upload");
+    setResult(null);
+    router.refresh();
+  }
+
+  if (view === "list") {
+    return (
+      <div className="p-5 lg:p-8 max-w-6xl mx-auto">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: "#05881215" }}>
+            ⬇
+          </div>
+          <div>
+            <h1 className="font-heading font-extrabold text-2xl text-[#323232]">M-01 · Intake</h1>
+            <p className="text-sm text-[#646464]">
+              {candidates.length} candidate{candidates.length === 1 ? "" : "s"} in the programme — Programme Manager Portal
+            </p>
+          </div>
+        </div>
+        <CandidateListView
+          candidates={candidates}
+          onDeleted={(ids) => setCandidates((prev) => prev.filter((c) => !ids.includes(c.id)))}
+          onStartUpload={() => {
+            setStep("upload");
+            setResult(null);
+            setView("wizard");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-5 lg:p-8 max-w-5xl mx-auto">
       <div className="mb-7">
+        <button
+          onClick={backToList}
+          className="inline-flex items-center gap-1.5 text-sm font-heading font-bold mb-4 transition-colors"
+          style={{ color: "#646464" }}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Candidates
+        </button>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: "#05881215" }}>
             ⬇
@@ -724,7 +998,7 @@ export function M01Intake({ pmName }: { pmName: string }) {
       {step === "validate" && result && <ValidateStep result={result} onNext={() => setStep("review")} />}
       {step === "review" && result && <ReviewStep result={result} onNext={() => setStep("summary")} />}
       {step === "summary" && result && <SummaryStep result={result} onNext={() => setStep("dispatch")} />}
-      {step === "dispatch" && result && <DispatchStep result={result} pmName={pmName} />}
+      {step === "dispatch" && result && <DispatchStep result={result} pmName={pmName} onFinished={backToList} />}
     </div>
   );
 }

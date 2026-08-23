@@ -10,7 +10,40 @@ export default async function PortalM01Page() {
   if (!session) redirect("/login");
 
   if (session.role === "radial") {
-    return <M01Intake pmName={session.user.name} />;
+    const supabase = await createServerSupabaseClient();
+    const { data: candidates } = await supabase
+      .from("candidates")
+      .select("id, full_name, email, phone, jqs_number, gender, discipline, status, created_at, batches(filename)")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+
+    type Joined = {
+      id: string;
+      full_name: string;
+      email: string;
+      phone: string | null;
+      jqs_number: string | null;
+      gender: string | null;
+      discipline: string | null;
+      status: string;
+      created_at: string;
+      batches: { filename: string } | null;
+    };
+
+    const initialCandidates = ((candidates ?? []) as unknown as Joined[]).map((c) => ({
+      id: c.id,
+      fullName: c.full_name,
+      email: c.email,
+      phone: c.phone,
+      jqsNumber: c.jqs_number,
+      gender: c.gender,
+      discipline: c.discipline,
+      status: c.status,
+      createdAt: c.created_at,
+      batchFilename: c.batches?.filename ?? null,
+    }));
+
+    return <M01Intake pmName={session.user.name} initialCandidates={initialCandidates} />;
   }
 
   if (session.role === "candidate") {
