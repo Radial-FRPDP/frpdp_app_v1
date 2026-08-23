@@ -24,23 +24,34 @@ function CandidateLogin() {
     }
     setLoading(true);
     setError("");
+    const GENERIC_ERROR = "Invalid JQS number or password.";
+
+    // Step 1: resolve JQS Number -> email server-side (RLS blocks an
+    // unauthenticated read of candidates, so this has to be a route).
     const res = await fetch("/api/auth/candidate-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jqsNumber: jqs, password }),
+      body: JSON.stringify({ jqsNumber: jqs }),
     });
-    const body = await res.json();
-    setLoading(false);
     if (!res.ok) {
-      setError(body.error ?? "Sign-in failed.");
+      setLoading(false);
+      setError(GENERIC_ERROR);
       return;
     }
-    // A hard navigation, not router.push()+router.refresh(). The auth
-    // cookie was just set by the POST above, but a client-side push can
-    // land on a stale Router Cache entry for /portal (e.g. one computed
-    // before this cookie existed) and bounce straight back to /login —
-    // exactly the "looks like it's navigating, then snaps back" symptom.
-    // A full page load always requests /portal fresh, cookie included.
+    const { email } = await res.json();
+
+    // Step 2: sign in from the browser's own Supabase client, not a
+    // server round-trip -- this writes the session cookies directly
+    // (no Next.js/Netlify response plumbing involved), which is what
+    // actually fixed the "signs in, then bounces back to login" bug a
+    // server-side signInWithPassword() was hitting.
+    const supabase = createClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (signInError) {
+      setError(GENERIC_ERROR);
+      return;
+    }
     window.location.href = "/portal";
   }
 
@@ -137,18 +148,40 @@ function StaffLogin() {
     }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/staff-login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ org: selectedOrg, email, password }),
-    });
-    const body = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(body.error ?? "Sign-in failed.");
+
+    // Sign in from the browser's own Supabase client -- no server round
+    // trip at all now (see the matching comment + explanation in
+    // CandidateLogin above; the previous server-side signInWithPassword()
+    // is what was causing sign-in to appear to work and then bounce back
+    // to /login).
+    const supabase = createClient();
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError || !data.user) {
+      setLoading(false);
+      setError("Invalid email or password.");
       return;
     }
-    // Hard navigation — see the matching comment in CandidateLogin above.
+
+    // The org tile is a UX guard, not the real access boundary (RLS is)
+    // -- if the account's actual org in staff_profiles doesn't match
+    // what was picked, sign back out and report a clear error rather
+    // than silently letting them into a portal that doesn't match the
+    // tile they clicked.
+    const { data: staffRow } = await supabase.from("staff_profiles").select("org").eq("id", data.user.id).maybeSingle();
+    if (!staffRow) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("This account isn't set up as staff yet. Contact your programme administrator.");
+      return;
+    }
+    if (staffRow.org !== selectedOrg) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError(`This account is registered under a different organisation, not ${selectedOrg}.`);
+      return;
+    }
+
+    setLoading(false);
     window.location.href = "/portal";
   }
 
