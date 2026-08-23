@@ -11,6 +11,38 @@ interface ResultRow {
   totalScore: number;
   maxScore: number;
   passed: boolean;
+  resultApprovedAt: string | null;
+}
+
+function ApproveResultButton({ resultId, canApprove, onApproved }: { resultId: string; canApprove: boolean; onApproved: (id: string, approvedAt: string) => void }) {
+  const supabase = createClient();
+  const [busy, setBusy] = useState(false);
+
+  async function approve() {
+    setBusy(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const approvedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from("exam_results")
+      .update({ result_approved_at: approvedAt, result_approved_by: user?.id ?? null })
+      .eq("id", resultId);
+    setBusy(false);
+    if (!error) onApproved(resultId, approvedAt);
+  }
+
+  return (
+    <button
+      onClick={approve}
+      disabled={busy || !canApprove}
+      title={canApprove ? "Approve this result so the candidate can download their result letter" : "Review all pending incidents before approving results"}
+      className="text-xs font-heading font-bold whitespace-nowrap disabled:opacity-30"
+      style={{ color: "#058812" }}
+    >
+      {busy ? "Approving…" : "Approve"}
+    </button>
+  );
 }
 
 interface IncidentRow {
@@ -102,15 +134,20 @@ function IncidentCard({ inc, onUpdated }: { inc: IncidentRow; onUpdated: (id: st
   );
 }
 
-export function M04ResultsIncidents({ results, initialIncidents }: { results: ResultRow[]; initialIncidents: IncidentRow[] }) {
+export function M04ResultsIncidents({ results: initialResults, initialIncidents }: { results: ResultRow[]; initialIncidents: IncidentRow[] }) {
   const [tab, setTab] = useState<"results" | "incidents">("results");
   const [incidents, setIncidents] = useState(initialIncidents);
+  const [results, setResults] = useState(initialResults);
 
   const pendingCount = incidents.filter((i) => i.status === "pending").length;
   const passed = results.filter((r) => r.passed).length;
 
   function updateIncident(id: string, patch: Partial<IncidentRow>) {
     setIncidents((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  }
+
+  function markApproved(id: string, approvedAt: string) {
+    setResults((prev) => prev.map((r) => (r.id === id ? { ...r, resultApprovedAt: approvedAt } : r)));
   }
 
   return (
@@ -169,7 +206,7 @@ export function M04ResultsIncidents({ results, initialIncidents }: { results: Re
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "#f4f4f4" }}>
-                {["Candidate", "JQS", "Discipline", "Score", "Result"].map((h) => (
+                {["Candidate", "JQS", "Discipline", "Score", "Result", "Approval"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[11px] font-heading font-bold uppercase tracking-wider text-[#646464]">
                     {h}
                   </th>
@@ -188,11 +225,18 @@ export function M04ResultsIncidents({ results, initialIncidents }: { results: Re
                   <td className="px-4 py-3">
                     <span className={`badge ${r.passed ? "badge-verified" : "badge-issue"}`}>{r.passed ? "Passed" : "Not passed"}</span>
                   </td>
+                  <td className="px-4 py-3">
+                    {r.resultApprovedAt ? (
+                      <span className="badge badge-verified">Approved</span>
+                    ) : (
+                      <ApproveResultButton resultId={r.id} canApprove={pendingCount === 0} onApproved={markApproved} />
+                    )}
+                  </td>
                 </tr>
               ))}
               {results.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-[#969696]">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-[#969696]">
                     No results submitted yet.
                   </td>
                 </tr>

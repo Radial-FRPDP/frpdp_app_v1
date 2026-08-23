@@ -24,7 +24,7 @@ export default async function PortalM04Page() {
     // consistency, not a workaround.
     const db = createServiceRoleClient();
     const [{ data: results }, { data: incidents }] = await Promise.all([
-      db.from("exam_results").select("id, candidate_id, total_score, max_score, passed, candidates(full_name, jqs_number, discipline)"),
+      db.from("exam_results").select("id, candidate_id, total_score, max_score, passed, result_approved_at, candidates(full_name, jqs_number, discipline)"),
       db
         .from("exam_incidents")
         .select("id, exam_session_id, category, severity, description, status, created_at, resolution_note, exam_sessions(candidates(full_name), cbt_centres(name))")
@@ -36,6 +36,7 @@ export default async function PortalM04Page() {
       total_score: number;
       max_score: number;
       passed: boolean;
+      result_approved_at: string | null;
       candidates: { full_name: string; jqs_number: string | null; discipline: string | null } | null;
     };
     const resultRows = ((results ?? []) as unknown as ResultJoin[]).map((r) => ({
@@ -46,6 +47,7 @@ export default async function PortalM04Page() {
       totalScore: r.total_score,
       maxScore: r.max_score,
       passed: r.passed,
+      resultApprovedAt: r.result_approved_at,
     }));
 
     type IncidentJoin = {

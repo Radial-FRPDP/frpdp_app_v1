@@ -22,6 +22,7 @@ interface ResultRow {
   total_score: number;
   max_score: number;
   passed: boolean;
+  result_approved_at?: string | null;
 }
 
 function useCountdown(expiresAt: string | null) {
@@ -165,6 +166,20 @@ export function M04Assess() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="mt-8 pt-6 border-t" style={{ borderColor: "#f4f4f4" }}>
+            {result.result_approved_at ? (
+              <a
+                href="/api/results/letter"
+                className="inline-block px-6 py-3 rounded-xl text-white text-sm font-heading font-bold"
+                style={{ background: "#058812" }}
+              >
+                Download Result Letter (PDF)
+              </a>
+            ) : (
+              <p className="text-xs text-[#969696]">Your result letter will be available to download here once Radial Circle approves this result.</p>
+            )}
           </div>
         </div>
       </div>

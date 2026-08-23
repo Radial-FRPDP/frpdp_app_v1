@@ -334,6 +334,8 @@ export interface Database {
           submitted_by: string | null;
           submitted_at: string;
           created_at: string;
+          result_approved_at: string | null;
+          result_approved_by: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["exam_results"]["Row"]> & {
           candidate_id: string;
