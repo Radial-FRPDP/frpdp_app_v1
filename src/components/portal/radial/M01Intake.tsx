@@ -65,7 +65,60 @@ export interface CandidateListItem {
   discipline: string | null;
   status: string;
   createdAt: string;
+  batchId: string | null;
   batchFilename: string | null;
+}
+
+interface BatchStatusResponse extends UploadResponse {
+  stage: "review" | "summary" | "done";
+  invitedCount: number;
+}
+
+function BatchesPanel({ candidates, onContinue, busyBatchId }: { candidates: CandidateListItem[]; onContinue: (batchId: string) => void; busyBatchId: string | null }) {
+  type BatchGroup = { batchId: string; filename: string; total: number; pending: number; latest: string };
+  const groups = new Map<string, BatchGroup>();
+  for (const c of candidates) {
+    if (!c.batchId) continue;
+    const g = groups.get(c.batchId) ?? { batchId: c.batchId, filename: c.batchFilename || "Unnamed import", total: 0, pending: 0, latest: c.createdAt };
+    g.total += 1;
+    if (c.status === "pending_review") g.pending += 1;
+    if (c.createdAt > g.latest) g.latest = c.createdAt;
+    groups.set(c.batchId, g);
+  }
+  const pendingBatches = Array.from(groups.values())
+    .filter((g) => g.pending > 0)
+    .sort((a, b) => (a.latest < b.latest ? 1 : -1));
+
+  if (pendingBatches.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-elev-1 overflow-hidden mb-5">
+      <div className="px-5 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
+        <h4 className="font-heading font-bold text-sm text-[#323232]">Imports in progress</h4>
+        <p className="text-[12px] text-[#646464] mt-0.5">Not yet fully reviewed and dispatched — pick up where you left off.</p>
+      </div>
+      <div className="divide-y" style={{ borderColor: "#f4f4f4" }}>
+        {pendingBatches.map((g) => (
+          <div key={g.batchId} className="flex items-center gap-4 px-5 py-4">
+            <div className="flex-1 min-w-0">
+              <div className="font-heading font-bold text-sm text-[#323232] truncate">{g.filename}</div>
+              <div className="text-[12px] text-[#646464] mt-0.5">
+                {g.pending} of {g.total} candidate{g.total === 1 ? "" : "s"} still need review or dispatch
+              </div>
+            </div>
+            <button
+              disabled={busyBatchId === g.batchId}
+              onClick={() => onContinue(g.batchId)}
+              className="px-4 py-2.5 rounded-xl text-white text-xs font-heading font-bold shrink-0 disabled:opacity-50"
+              style={{ background: "#058812" }}
+            >
+              {busyBatchId === g.batchId ? "Loading…" : "Continue →"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const CANDIDATE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -90,10 +143,16 @@ function CandidateListView({
   candidates,
   onDeleted,
   onStartUpload,
+  onContinueBatch,
+  continuingBatchId,
+  continueError,
 }: {
   candidates: CandidateListItem[];
   onDeleted: (ids: string[]) => void;
   onStartUpload: () => void;
+  onContinueBatch: (batchId: string) => void;
+  continuingBatchId: string | null;
+  continueError: string;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -164,6 +223,8 @@ function CandidateListView({
 
   return (
     <div className="space-y-5">
+      <BatchesPanel candidates={candidates} onContinue={onContinueBatch} busyBatchId={continuingBatchId} />
+      {continueError && <div className="text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">{continueError}</div>}
       <div className="bg-white rounded-2xl p-5 shadow-elev-2">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3 flex-1 min-w-[240px]">
@@ -876,7 +937,31 @@ export function M01Intake({ pmName, initialCandidates }: { pmName: string; initi
   const [candidates, setCandidates] = useState(initialCandidates);
   const [step, setStep] = useState<WorkflowStep>("upload");
   const [result, setResult] = useState<UploadResponse | null>(null);
+  const [continuingBatchId, setContinuingBatchId] = useState<string | null>(null);
+  const [continueError, setContinueError] = useState("");
   const stepIndex = WORKFLOW_STEPS.findIndex((s) => s.id === step);
+
+  // Resumes an already-uploaded batch instead of starting a fresh CSV
+  // import: rebuilds the review/summary data straight from the DB
+  // (persisted validation_issues / duplicate_of / status, not the
+  // in-memory result of the original upload, which is long gone once
+  // you've navigated away) and lands on Review Queues if anything's
+  // still unresolved, or Import Summary if it's just waiting on dispatch.
+  async function continueBatch(batchId: string) {
+    setContinuingBatchId(batchId);
+    setContinueError("");
+    const res = await fetch(`/api/intake/batch-status?batchId=${encodeURIComponent(batchId)}`);
+    const body = await res.json();
+    setContinuingBatchId(null);
+    if (!res.ok) {
+      setContinueError(body.error ?? "Couldn't load this import.");
+      return;
+    }
+    const { stage, ...rest } = body as BatchStatusResponse;
+    setResult(rest);
+    setStep(stage === "review" ? "review" : "summary");
+    setView("wizard");
+  }
 
   // Server-fetched candidate list only reflects what was on the page at
   // load time — resync whenever a router.refresh() brings fresh props in
@@ -914,6 +999,9 @@ export function M01Intake({ pmName, initialCandidates }: { pmName: string; initi
             setResult(null);
             setView("wizard");
           }}
+          onContinueBatch={continueBatch}
+          continuingBatchId={continuingBatchId}
+          continueError={continueError}
         />
       </div>
     );

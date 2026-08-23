@@ -24,7 +24,7 @@ export default async function PortalM01Page() {
     const supabase = createServiceRoleClient();
     const { data: candidates, error } = await supabase
       .from("candidates")
-      .select("id, full_name, email, phone, jqs_number, gender, discipline, status, created_at, batches(filename)")
+      .select("id, full_name, email, phone, jqs_number, gender, discipline, status, created_at, batch_id, batches(filename)")
       .order("created_at", { ascending: false })
       .limit(1000);
     if (error) console.error("M-01 candidate list fetch failed:", error.message);
@@ -39,6 +39,7 @@ export default async function PortalM01Page() {
       discipline: string | null;
       status: string;
       created_at: string;
+      batch_id: string | null;
       batches: { filename: string } | null;
     };
 
@@ -52,6 +53,7 @@ export default async function PortalM01Page() {
       discipline: c.discipline,
       status: c.status,
       createdAt: c.created_at,
+      batchId: c.batch_id,
       batchFilename: c.batches?.filename ?? null,
     }));
 
