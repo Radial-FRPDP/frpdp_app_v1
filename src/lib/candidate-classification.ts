@@ -24,6 +24,18 @@ export { MAX_AGE };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * candidates.email is NOT NULL + UNIQUE, so a row with no real email
+ * can't just store '' or null (see the upload route's insert -- and see
+ * the "candidates_email_idx" unique-constraint error you get trying to
+ * force it via direct SQL). Instead the app substitutes a synthesized,
+ * guaranteed-unique placeholder at upload time: unknown-row-N@no-email
+ * .invalid. M01Intake.tsx already special-cases this domain for display
+ * ("— missing —"); isEmailIssue below needs to recognize the exact same
+ * convention or a placeholder row looks like "has a valid email" to it.
+ */
+const NO_EMAIL_DOMAIN = "no-email.invalid";
+
 interface ClassifiableRow {
   duplicate_of: string | null;
   validation_issues: string[] | null;
@@ -58,7 +70,7 @@ export function isAgeIssue(r: ClassifiableRow): boolean {
 
 export function isEmailIssue(r: ClassifiableRow): boolean {
   if (r.email !== undefined) {
-    return !r.email || !EMAIL_RE.test(r.email);
+    return !r.email || !EMAIL_RE.test(r.email) || r.email.toLowerCase().endsWith(NO_EMAIL_DOMAIN);
   }
   return (r.validation_issues ?? []).some((p) => p.toLowerCase().includes("missing email") || p.toLowerCase().includes("invalid email"));
 }
