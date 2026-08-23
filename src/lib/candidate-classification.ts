@@ -22,10 +22,26 @@ export function ageFromDob(dob: string | null): number | null {
 
 export { MAX_AGE };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface ClassifiableRow {
   duplicate_of: string | null;
   validation_issues: string[] | null;
   status: string;
+  /**
+   * Optional -- only present when the caller's select() included these
+   * live columns. When present, they are the source of truth and win
+   * over validation_issues. That matters because validation_issues is a
+   * one-time snapshot written at CSV-upload time: if a candidate's email
+   * or date of birth is later edited directly in Supabase (outside the
+   * app entirely, e.g. via Table Editor), the stored text never gets
+   * re-checked and silently goes stale -- "Missing Email: 0" while half
+   * the list actually has a blank email column is exactly that failure
+   * mode. Falling back to the text when the column wasn't selected keeps
+   * every existing caller's behavior unchanged.
+   */
+  email?: string | null;
+  date_of_birth?: string | null;
 }
 
 export function isDuplicate(r: ClassifiableRow): boolean {
@@ -33,10 +49,17 @@ export function isDuplicate(r: ClassifiableRow): boolean {
 }
 
 export function isAgeIssue(r: ClassifiableRow): boolean {
+  if (r.date_of_birth !== undefined) {
+    const age = ageFromDob(r.date_of_birth);
+    return age !== null && age > MAX_AGE;
+  }
   return (r.validation_issues ?? []).some((p) => p.toLowerCase().includes("age-ineligible"));
 }
 
 export function isEmailIssue(r: ClassifiableRow): boolean {
+  if (r.email !== undefined) {
+    return !r.email || !EMAIL_RE.test(r.email);
+  }
   return (r.validation_issues ?? []).some((p) => p.toLowerCase().includes("missing email") || p.toLowerCase().includes("invalid email"));
 }
 

@@ -1,20 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
-
-export const runtime = "nodejs";
-
-const MAX_AGE = 30;
-
-function ageFromDob(dob: string | null): number | null {
-  if (!dob) return null;
-  const birth = new Date(dob);
-  if (Number.isNaN(birth.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - birth.getFullYear();
-  const beforeBirthday = now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
-  if (beforeBirthday) age--;
-  return age;
-}
+import { ageFromDob, isDuplicate, isAgeIssue, isEmailIssue } from "@/lib/candidate-classification";
 
 /**
  * Rebuilds an UploadResponse-shaped payload for an already-imported batch
@@ -69,11 +55,10 @@ export async function GET(req: NextRequest) {
 
   const active = rows.filter((r) => r.status !== "rejected");
 
-  const isDuplicate = (r: (typeof rows)[number]) => !!r.duplicate_of || (r.validation_issues ?? []).some((p: string) => p.toLowerCase().includes("duplicate"));
-  const isAgeIssue = (r: (typeof rows)[number]) => (r.validation_issues ?? []).some((p: string) => p.toLowerCase().includes("age-ineligible"));
-  const isEmailIssue = (r: (typeof rows)[number]) =>
-    (r.validation_issues ?? []).some((p: string) => p.toLowerCase().includes("missing email") || p.toLowerCase().includes("invalid email"));
-
+  // isAgeIssue/isEmailIssue check the live date_of_birth/email columns
+  // (both are selected above), not just the validation_issues text saved
+  // at upload time -- otherwise editing a candidate's email or DOB
+  // directly in Supabase after upload silently goes undetected here.
   const duplicateRows = active.filter(isDuplicate);
   const ageIneligibleRows = active.filter((r) => isAgeIssue(r) && !isDuplicate(r));
   const missingEmailRows = active.filter((r) => isEmailIssue(r) && !isDuplicate(r) && !isAgeIssue(r));
