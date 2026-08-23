@@ -152,6 +152,31 @@ export function accessRequestDecisionEmail(fullName: string, approved: boolean, 
   );
 }
 
+export function newMessageForRadialEmail(candidateFullName: string, jqsNumber: string | null, body: string) {
+  return shell(
+    "New message from a candidate",
+    `<p style="font-size:14px;line-height:1.6;"><b>${escapeHtml(candidateFullName)}</b>${
+      jqsNumber ? ` (${escapeHtml(jqsNumber)})` : ""
+    } sent a new message on the Field Readiness Programme platform:</p>
+     <p style="font-size:14px;line-height:1.6;background:#f1f3f0;border-radius:8px;padding:14px 16px;white-space:pre-wrap;">${escapeHtml(
+       body
+     )}</p>
+     <p style="font-size:14px;line-height:1.6;">Reply from the Messages tab on their M-02 Verification Queue entry.</p>`
+  );
+}
+
+export function newMessageForCandidateEmail(fullName: string, body: string) {
+  return shell(
+    "New message from Radial Circle",
+    `<p style="font-size:14px;line-height:1.6;">Hi ${escapeHtml(fullName)},</p>
+     <p style="font-size:14px;line-height:1.6;">You have a new message from the Radial Circle Programme Team:</p>
+     <p style="font-size:14px;line-height:1.6;background:#f1f3f0;border-radius:8px;padding:14px 16px;white-space:pre-wrap;">${escapeHtml(
+       body
+     )}</p>
+     <p style="font-size:14px;line-height:1.6;">Sign in to your candidate portal to read the full conversation and reply.</p>`
+  );
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

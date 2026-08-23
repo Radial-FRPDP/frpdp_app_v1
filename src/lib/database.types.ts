@@ -28,7 +28,8 @@ export type NotificationType =
   | "cbt_reminder"
   | "nysc_flagged"
   | "staff_invite"
-  | "access_request";
+  | "access_request"
+  | "message";
 
 export type StaffOrg = "radial" | "ncdmb" | "renaissance" | "cbt";
 export type GeoZone =

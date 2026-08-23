@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 export interface MessageRow {
   id: string;
@@ -25,7 +24,6 @@ export function MessageThread({
   senderRole: "radial" | "candidate";
   initialMessages: MessageRow[];
 }) {
-  const supabase = createClient();
   const [messages, setMessages] = useState<MessageRow[]>(initialMessages);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -36,17 +34,24 @@ export function MessageThread({
     if (!text) return;
     setSending(true);
     setError("");
-    const { data, error: err } = await supabase
-      .from("messages")
-      .insert({ candidate_id: candidateId, sender_role: senderRole, body: text })
-      .select()
-      .single();
+    // Goes through /api/messages/send rather than a direct client-side
+    // insert -- same RLS-enforced insert either way, but this is also
+    // what fires the notification email (candidate message -> programme
+    // coordinator, radial reply -> candidate) now that Resend is
+    // configured.
+    const res = await fetch("/api/messages/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidateId, body: text }),
+    });
     setSending(false);
-    if (err) {
-      setError(err.message);
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null);
+      setError(payload?.error ?? "Could not send message.");
       return;
     }
-    setMessages((prev) => [...prev, data]);
+    const { message } = await res.json();
+    setMessages((prev) => [...prev, message]);
     setBody("");
   }
 
