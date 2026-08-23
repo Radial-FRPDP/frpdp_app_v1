@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface Centre {
   id: string;
@@ -24,16 +25,184 @@ interface ExistingBooking {
   ref: string;
 }
 
+interface ExceptionRequest {
+  id: string;
+  type: "centre_change" | "missed_window" | "duplicate_booking";
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string;
+  decisionNote: string | null;
+}
+
+/**
+ * Self-service "something's wrong with my booking" flow (M-03, see
+ * design-reference-gap-analysis.md Section 3.6). booking_exceptions
+ * already has an RLS policy letting a candidate insert a row for their
+ * own candidate_id (booking_exceptions_self_insert, 0008) -- so this
+ * writes directly via the session-bound client, same as the rest of the
+ * candidate portal, rather than needing a new API route.
+ */
+function ExceptionRequestPanel({
+  candidateId,
+  bookingId,
+  centres,
+  slots,
+  pendingRequest,
+  onRequested,
+}: {
+  candidateId: string;
+  bookingId: string | null;
+  centres: Centre[];
+  slots: Slot[];
+  pendingRequest: ExceptionRequest | null;
+  onRequested: () => void;
+}) {
+  const supabase = createClient();
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState<"centre_change" | "missed_window">("centre_change");
+  const [centreId, setCentreId] = useState(centres[0]?.id ?? "");
+  const [slotId, setSlotId] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const slotsForCentre = useMemo(() => slots.filter((s) => s.cbt_centre_id === centreId && s.booked_count < s.capacity), [slots, centreId]);
+
+  if (pendingRequest) {
+    const labels: Record<ExceptionRequest["type"], string> = {
+      centre_change: "Centre change",
+      missed_window: "Missed my window",
+      duplicate_booking: "Duplicate booking",
+    };
+    const statusColor = pendingRequest.status === "approved" ? "#058812" : pendingRequest.status === "rejected" ? "#9b2335" : "#e05c00";
+    return (
+      <div className="mt-4 bg-white rounded-2xl p-5 shadow-elev-2 max-w-2xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-heading font-bold uppercase tracking-wider text-[#969696] mb-1">Booking Change Request</p>
+            <p className="text-sm text-[#323232]">{labels[pendingRequest.type]}</p>
+          </div>
+          <span className="text-[11px] font-heading font-bold px-3 py-1 rounded-full capitalize" style={{ background: `${statusColor}15`, color: statusColor }}>
+            {pendingRequest.status}
+          </span>
+        </div>
+        {pendingRequest.decisionNote && <p className="text-xs text-[#646464] mt-2">Note from Radial Circle: {pendingRequest.decisionNote}</p>}
+        {pendingRequest.status === "pending" && <p className="text-xs text-[#969696] mt-2">Awaiting a decision from the Programme Manager.</p>}
+      </div>
+    );
+  }
+
+  async function submitRequest() {
+    if (type === "centre_change" && !slotId) {
+      setError("Pick the new centre and time you'd like.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    const { error: err } = await supabase.from("booking_exceptions").insert({
+      candidate_id: candidateId,
+      booking_id: bookingId,
+      type,
+      requested_slot_id: type === "centre_change" ? slotId : null,
+      reason: reason || null,
+    });
+    setSubmitting(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setOpen(false);
+    onRequested();
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-4 text-center">
+        <button onClick={() => setOpen(true)} className="text-xs font-heading font-bold underline" style={{ color: "#1B4F8A" }}>
+          Need to change your centre or missed your window?
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 bg-white rounded-2xl p-6 shadow-elev-2 max-w-2xl mx-auto text-left">
+      <h4 className="font-heading font-bold text-sm text-[#323232] mb-4">Request a booking change</h4>
+      <div className="flex gap-2 mb-4">
+        {(["centre_change", "missed_window"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setType(t)}
+            className="flex-1 py-2 rounded-xl text-xs font-heading font-bold border-2"
+            style={{ borderColor: type === t ? "#1B4F8A" : "#D8D8D8", background: type === t ? "#1B4F8A08" : "white", color: "#323232" }}
+          >
+            {t === "centre_change" ? "Change centre / time" : "I missed my window"}
+          </button>
+        ))}
+      </div>
+
+      {type === "centre_change" && (
+        <div className="grid sm:grid-cols-2 gap-3 mb-4">
+          <select
+            value={centreId}
+            onChange={(e) => {
+              setCentreId(e.target.value);
+              setSlotId("");
+            }}
+            className="input"
+          >
+            {centres.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select value={slotId} onChange={(e) => setSlotId(e.target.value)} className="input">
+            <option value="">Choose a slot…</option>
+            {slotsForCentre.map((s) => (
+              <option key={s.id} value={s.id}>
+                {new Date(s.starts_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" })}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason (optional)"
+        rows={2}
+        className="input w-full mb-4"
+      />
+
+      {error && <div className="mb-4 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl border border-red-100">{error}</div>}
+
+      <div className="flex gap-2 justify-end">
+        <button onClick={() => setOpen(false)} className="btn-secondary text-xs px-4 py-2">
+          Cancel
+        </button>
+        <button onClick={submitRequest} disabled={submitting} className="btn-primary text-xs px-4 py-2">
+          {submitting ? "Sending…" : "Send Request"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function M03Booking({
   centres,
   slots,
   ninVerified,
   existingBooking,
+  candidateId,
+  pendingException,
 }: {
   centres: Centre[];
   slots: Slot[];
   ninVerified: boolean;
-  existingBooking: ExistingBooking | null;
+  existingBooking: (ExistingBooking & { id: string }) | null;
+  candidateId: string | null;
+  pendingException: ExceptionRequest | null;
 }) {
   const router = useRouter();
   const [centreId, setCentreId] = useState<string | null>(null);
@@ -41,7 +210,7 @@ export function M03Booking({
   const [slotId, setSlotId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
-  const [booked, setBooked] = useState<ExistingBooking | null>(existingBooking);
+  const [booked, setBooked] = useState<(ExistingBooking & { id: string }) | null>(existingBooking);
 
   const centreSlots = useMemo(() => slots.filter((s) => s.cbt_centre_id === centreId), [slots, centreId]);
   const datesForCentre = useMemo(() => {
@@ -73,6 +242,7 @@ export function M03Booking({
       return;
     }
     setBooked({
+      id: String(body.booking.id),
       startsAt: body.booking.starts_at ?? selectedSlot?.starts_at ?? new Date().toISOString(),
       centreName: selectedCentre?.name ?? null,
       ref: `FRP-CBT-${String(body.booking.id).slice(0, 8).toUpperCase()}`,
@@ -97,6 +267,16 @@ export function M03Booking({
           </p>
           <p className="text-xs text-[#969696]">A confirmation email has been sent. Arrive at least 30 minutes early with your NIN slip.</p>
         </div>
+        {candidateId && (
+          <ExceptionRequestPanel
+            candidateId={candidateId}
+            bookingId={booked.id}
+            centres={centres}
+            slots={slots}
+            pendingRequest={pendingException}
+            onRequested={() => router.refresh()}
+          />
+        )}
       </div>
     );
   }

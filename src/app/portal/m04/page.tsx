@@ -3,6 +3,7 @@ import { getPortalSession } from "@/lib/portal/session";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { M04Assess } from "@/components/portal/candidate/M04Assess";
 import { M04CbtOfficer } from "@/components/portal/cbt/M04CbtOfficer";
+import { M04ResultsIncidents } from "@/components/portal/radial/M04ResultsIncidents";
 import { NCDMBM04 } from "@/components/portal/ncdmb/NCDMBM04";
 import { RenaissanceM04 } from "@/components/portal/renaissance/RenaissanceM04";
 import { ComingSoon } from "@/components/portal/ComingSoon";
@@ -13,6 +14,63 @@ export default async function PortalM04Page() {
 
   if (session.role === "candidate") {
     return <M04Assess />;
+  }
+
+  if (session.role === "radial") {
+    // Same trusted-backend read pattern used elsewhere on this page (see
+    // the ncdmb/renaissance branch below): role is already verified by
+    // getPortalSession(), and Radial Circle (is_admin) has full RLS access
+    // to exam_incidents/exam_results anyway, so service-role here is just
+    // consistency, not a workaround.
+    const db = createServiceRoleClient();
+    const [{ data: results }, { data: incidents }] = await Promise.all([
+      db.from("exam_results").select("id, candidate_id, total_score, max_score, passed, candidates(full_name, jqs_number, discipline)"),
+      db
+        .from("exam_incidents")
+        .select("id, exam_session_id, category, severity, description, status, created_at, resolution_note, exam_sessions(candidates(full_name), cbt_centres(name))")
+        .order("created_at", { ascending: false }),
+    ]);
+
+    type ResultJoin = {
+      id: string;
+      total_score: number;
+      max_score: number;
+      passed: boolean;
+      candidates: { full_name: string; jqs_number: string | null; discipline: string | null } | null;
+    };
+    const resultRows = ((results ?? []) as unknown as ResultJoin[]).map((r) => ({
+      id: r.id,
+      candidateName: r.candidates?.full_name ?? "Unknown candidate",
+      jqsNumber: r.candidates?.jqs_number ?? null,
+      discipline: r.candidates?.discipline ?? null,
+      totalScore: r.total_score,
+      maxScore: r.max_score,
+      passed: r.passed,
+    }));
+
+    type IncidentJoin = {
+      id: string;
+      category: "device_failure" | "identity_mismatch" | "late_arrival" | "other";
+      severity: "low" | "medium" | "high";
+      description: string | null;
+      status: "pending" | "reviewed" | "closed";
+      created_at: string;
+      resolution_note: string | null;
+      exam_sessions: { candidates: { full_name: string } | null; cbt_centres: { name: string } | null } | null;
+    };
+    const incidentRows = ((incidents ?? []) as unknown as IncidentJoin[]).map((i) => ({
+      id: i.id,
+      candidateName: i.exam_sessions?.candidates?.full_name ?? null,
+      centreName: i.exam_sessions?.cbt_centres?.name ?? null,
+      category: i.category,
+      severity: i.severity,
+      description: i.description,
+      status: i.status,
+      createdAt: i.created_at,
+      resolutionNote: i.resolution_note,
+    }));
+
+    return <M04ResultsIncidents results={resultRows} initialIncidents={incidentRows} />;
   }
 
   if (session.role === "cbt") {
@@ -30,16 +88,46 @@ export default async function PortalM04Page() {
       );
     }
 
-    const [{ data: centre }, { data: sessions }] = await Promise.all([
+    const [{ data: centre }, { data: sessions }, { data: incidents }] = await Promise.all([
       supabase.from("cbt_centres").select("name").eq("id", staffRow.cbt_centre_id).maybeSingle(),
       supabase
         .from("exam_sessions")
         .select("id, candidate_id, workstation_label, status, checked_in_at, candidates(full_name, jqs_number)")
         .eq("cbt_centre_id", staffRow.cbt_centre_id)
         .order("checked_in_at", { ascending: false }),
+      // exam_incidents_cbt_own_centre (0008) already scopes this select to
+      // incidents on sessions at this officer's own centre -- the RLS
+      // policy does the filtering, this just needs the inner join to get
+      // there and the candidate name for display.
+      supabase
+        .from("exam_incidents")
+        .select("id, exam_session_id, category, severity, description, status, created_at, exam_sessions!inner(cbt_centre_id, candidates(full_name))")
+        .eq("exam_sessions.cbt_centre_id", staffRow.cbt_centre_id)
+        .order("created_at", { ascending: false }),
     ]);
 
-    return <M04CbtOfficer initialSessions={(sessions ?? []) as never} centreName={centre?.name ?? "Your centre"} />;
+    type IncidentJoin = {
+      id: string;
+      exam_session_id: string;
+      category: "device_failure" | "identity_mismatch" | "late_arrival" | "other";
+      severity: "low" | "medium" | "high";
+      description: string | null;
+      status: "pending" | "reviewed" | "closed";
+      created_at: string;
+      exam_sessions: { candidates: { full_name: string } | null } | null;
+    };
+    const initialIncidents = ((incidents ?? []) as unknown as IncidentJoin[]).map((i) => ({
+      id: i.id,
+      exam_session_id: i.exam_session_id,
+      category: i.category,
+      severity: i.severity,
+      description: i.description,
+      status: i.status,
+      created_at: i.created_at,
+      candidateName: i.exam_sessions?.candidates?.full_name ?? null,
+    }));
+
+    return <M04CbtOfficer initialSessions={(sessions ?? []) as never} initialIncidents={initialIncidents} centreName={centre?.name ?? "Your centre"} />;
   }
 
   if (session.role === "ncdmb" || session.role === "renaissance") {

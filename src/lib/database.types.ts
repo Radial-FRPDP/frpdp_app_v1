@@ -441,6 +441,14 @@ export interface Database {
         };
         Returns: Database["public"]["Tables"]["candidates"]["Row"];
       };
+      approve_booking_exception: {
+        Args: {
+          p_exception_id: string;
+          p_decision: "approved" | "rejected";
+          p_decision_note?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["booking_exceptions"]["Row"];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

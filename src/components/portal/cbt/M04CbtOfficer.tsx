@@ -12,12 +12,48 @@ interface SessionRow {
   candidates: { full_name: string; jqs_number: string | null } | null;
 }
 
+interface IncidentRow {
+  id: string;
+  exam_session_id: string;
+  category: "device_failure" | "identity_mismatch" | "late_arrival" | "other";
+  severity: "low" | "medium" | "high";
+  description: string | null;
+  status: "pending" | "reviewed" | "closed";
+  created_at: string;
+  candidateName: string | null;
+}
+
 const DEFAULT_SUBJECTS = ["Numeracy", "Verbal Reasoning", "Technical Aptitude", "Safety Awareness", "English"];
 
-export function M04CbtOfficer({ initialSessions, centreName }: { initialSessions: SessionRow[]; centreName: string }) {
+const INCIDENT_CATEGORY_LABEL: Record<IncidentRow["category"], string> = {
+  device_failure: "Device failure",
+  identity_mismatch: "Identity mismatch",
+  late_arrival: "Late arrival",
+  other: "Other",
+};
+
+const SEVERITY_COLOR: Record<IncidentRow["severity"], string> = { low: "#969696", medium: "#e05c00", high: "#9b2335" };
+
+export function M04CbtOfficer({
+  initialSessions,
+  initialIncidents,
+  centreName,
+}: {
+  initialSessions: SessionRow[];
+  initialIncidents: IncidentRow[];
+  centreName: string;
+}) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"live" | "checkin" | "results">("live");
+  const [tab, setTab] = useState<"live" | "checkin" | "results" | "incidents">("live");
   const [sessions, setSessions] = useState(initialSessions);
+  const [incidents, setIncidents] = useState(initialIncidents);
+
+  // Incident logging
+  const [incidentSessionId, setIncidentSessionId] = useState("");
+  const [incidentCategory, setIncidentCategory] = useState<IncidentRow["category"]>("device_failure");
+  const [incidentSeverity, setIncidentSeverity] = useState<IncidentRow["severity"]>("low");
+  const [incidentDescription, setIncidentDescription] = useState("");
+  const [loggingIncident, setLoggingIncident] = useState(false);
 
   // Check-in
   const [jqsQuery, setJqsQuery] = useState("");
@@ -84,6 +120,37 @@ export function M04CbtOfficer({ initialSessions, centreName }: { initialSessions
     setSessions((prev) => prev.map((s) => (s.candidate_id === resultCandidateId ? { ...s, status: "submitted" } : s)));
   }
 
+  async function logIncident() {
+    if (!incidentSessionId) {
+      setError("Pick which candidate's session this incident happened on.");
+      return;
+    }
+    setLoggingIncident(true);
+    setError("");
+    const { data, error: err } = await supabase
+      .from("exam_incidents")
+      .insert({
+        exam_session_id: incidentSessionId,
+        category: incidentCategory,
+        severity: incidentSeverity,
+        description: incidentDescription || null,
+      })
+      .select()
+      .single();
+    setLoggingIncident(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    const session = sessions.find((s) => s.id === incidentSessionId);
+    setIncidents((prev) => [
+      { ...data, candidateName: session?.candidates?.full_name ?? null },
+      ...prev,
+    ]);
+    setIncidentSessionId("");
+    setIncidentDescription("");
+  }
+
   return (
     <div className="p-5 lg:p-8 max-w-4xl mx-auto">
       <div className="mb-6">
@@ -91,11 +158,12 @@ export function M04CbtOfficer({ initialSessions, centreName }: { initialSessions
         <p className="text-sm text-[#646464]">{centreName} — CBT Officer</p>
       </div>
 
-      <div className="flex rounded-2xl p-1 mb-6 shadow-elev-1 bg-white max-w-md">
+      <div className="flex rounded-2xl p-1 mb-6 shadow-elev-1 bg-white max-w-xl">
         {([
           ["live", "Live Sessions"],
           ["checkin", "Check-in"],
           ["results", "Submit Results"],
+          ["incidents", "Incidents"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -219,6 +287,89 @@ export function M04CbtOfficer({ initialSessions, centreName }: { initialSessions
               Saved — {resultSaved.totalScore}/{resultSaved.maxScore} ({resultSaved.passed ? "PASSED" : "NOT PASSED"})
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "incidents" && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl p-6 shadow-elev-2">
+            <h3 className="font-heading font-bold text-sm text-[#323232] mb-4">Log an exam-day incident</h3>
+            <div className="grid sm:grid-cols-2 gap-3 mb-3">
+              <select value={incidentSessionId} onChange={(e) => setIncidentSessionId(e.target.value)} className="input">
+                <option value="">Which candidate?</option>
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.candidates?.full_name ?? "—"} ({s.candidates?.jqs_number ?? "no JQS"})
+                  </option>
+                ))}
+              </select>
+              <select value={incidentCategory} onChange={(e) => setIncidentCategory(e.target.value as IncidentRow["category"])} className="input">
+                {(Object.keys(INCIDENT_CATEGORY_LABEL) as IncidentRow["category"][]).map((c) => (
+                  <option key={c} value={c}>
+                    {INCIDENT_CATEGORY_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mb-3">
+              <label className="label">Severity</label>
+              <div className="flex gap-2 mt-1">
+                {(["low", "medium", "high"] as const).map((sev) => (
+                  <button
+                    key={sev}
+                    onClick={() => setIncidentSeverity(sev)}
+                    className="flex-1 py-2 rounded-xl text-xs font-heading font-bold capitalize border-2"
+                    style={{
+                      borderColor: incidentSeverity === sev ? SEVERITY_COLOR[sev] : "#D8D8D8",
+                      background: incidentSeverity === sev ? `${SEVERITY_COLOR[sev]}10` : "white",
+                      color: incidentSeverity === sev ? SEVERITY_COLOR[sev] : "#646464",
+                    }}
+                  >
+                    {sev}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <textarea
+              value={incidentDescription}
+              onChange={(e) => setIncidentDescription(e.target.value)}
+              placeholder="What happened?"
+              rows={3}
+              className="input w-full mb-4"
+            />
+            <button onClick={logIncident} disabled={loggingIncident} className="btn-primary">
+              {loggingIncident ? "Logging…" : "Log Incident"}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-elev-2 overflow-hidden">
+            <div className="px-6 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
+              <h3 className="font-heading font-bold text-sm text-[#323232]">Today&apos;s incidents at {centreName}</h3>
+            </div>
+            <div className="divide-y" style={{ borderColor: "#f4f4f4" }}>
+              {incidents.length === 0 && <p className="px-6 py-6 text-center text-sm text-[#969696]">Nothing logged yet.</p>}
+              {incidents.map((inc) => (
+                <div key={inc.id} className="px-6 py-4 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-heading font-semibold text-sm text-[#323232]">{inc.candidateName ?? "Unknown candidate"}</span>
+                      <span
+                        className="text-[10px] font-heading font-bold px-2 py-0.5 rounded-full capitalize"
+                        style={{ background: `${SEVERITY_COLOR[inc.severity]}15`, color: SEVERITY_COLOR[inc.severity] }}
+                      >
+                        {inc.severity}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#969696]">
+                      {INCIDENT_CATEGORY_LABEL[inc.category]} · {new Date(inc.created_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                    {inc.description && <p className="text-xs text-[#646464] mt-1">{inc.description}</p>}
+                  </div>
+                  <span className="badge badge-pending capitalize shrink-0">{inc.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

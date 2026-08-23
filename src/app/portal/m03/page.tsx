@@ -14,14 +14,42 @@ export default async function PortalM03Page() {
   const supabase = await createServerSupabaseClient();
 
   if (session.role === "radial") {
-    const [{ data: centres }, { data: slots }] = await Promise.all([
+    const [{ data: centres }, { data: slots }, { data: exceptions }] = await Promise.all([
       supabase.from("cbt_centres").select("id, name, state, zone, capacity, status").order("name"),
       supabase
         .from("cbt_slots")
         .select("id, starts_at, location, capacity, booked_count, cbt_centre_id")
         .order("starts_at", { ascending: true }),
+      supabase
+        .from("booking_exceptions")
+        .select("id, type, status, reason, requested_at, decision_note, requested_slot_id, candidates(full_name, jqs_number)")
+        .order("requested_at", { ascending: false })
+        .limit(100),
     ]);
-    return <M03CentresSlots initialCentres={centres ?? []} initialSlots={slots ?? []} />;
+
+    type ExceptionJoin = {
+      id: string;
+      type: string;
+      status: string;
+      reason: string | null;
+      requested_at: string;
+      decision_note: string | null;
+      requested_slot_id: string | null;
+      candidates: { full_name: string; jqs_number: string | null } | null;
+    };
+    const exceptionRows = ((exceptions ?? []) as unknown as ExceptionJoin[]).map((e) => ({
+      id: e.id,
+      candidateName: e.candidates?.full_name ?? "Unknown candidate",
+      jqsNumber: e.candidates?.jqs_number ?? null,
+      type: e.type as "centre_change" | "missed_window" | "duplicate_booking",
+      status: e.status as "pending" | "approved" | "rejected",
+      reason: e.reason,
+      requestedAt: e.requested_at,
+      decisionNote: e.decision_note,
+      requestedSlotId: e.requested_slot_id,
+    }));
+
+    return <M03CentresSlots initialCentres={centres ?? []} initialSlots={slots ?? []} initialExceptions={exceptionRows} />;
   }
 
   if (session.role === "ncdmb" || session.role === "renaissance") {
@@ -100,7 +128,7 @@ export default async function PortalM03Page() {
   const { data: candidate } = await supabase.from("candidates").select("id").eq("auth_user_id", user!.id).maybeSingle();
   if (!candidate) redirect("/login");
 
-  const [{ data: profile }, { data: existingBookingRow }, { data: centres }, { data: slots }] = await Promise.all([
+  const [{ data: profile }, { data: existingBookingRow }, { data: centres }, { data: slots }, { data: pendingExceptionRow }] = await Promise.all([
     supabase.from("profiles").select("nin_verification_status").eq("candidate_id", candidate.id).maybeSingle(),
     supabase
       .from("bookings")
@@ -114,6 +142,13 @@ export default async function PortalM03Page() {
       .select("id, starts_at, capacity, booked_count, cbt_centre_id")
       .gt("starts_at", new Date().toISOString())
       .order("starts_at", { ascending: true }),
+    supabase
+      .from("booking_exceptions")
+      .select("id, type, status, requested_at, decision_note")
+      .eq("candidate_id", candidate.id)
+      .order("requested_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const ninVerified = profile?.nin_verification_status === "verified";
@@ -122,11 +157,36 @@ export default async function PortalM03Page() {
   const booking = existingBookingRow as unknown as BookingJoin | null;
   const existingBooking = booking
     ? {
+        id: booking.id,
         startsAt: booking.cbt_slots?.starts_at ?? "",
         centreName: booking.cbt_slots?.cbt_centres?.name ?? booking.cbt_slots?.location ?? null,
         ref: `FRP-CBT-${booking.id.slice(0, 8).toUpperCase()}`,
       }
     : null;
 
-  return <M03Booking centres={centres ?? []} slots={slots ?? []} ninVerified={ninVerified} existingBooking={existingBooking} />;
+  // Only surface it as "the current request" while it's still pending, or
+  // was just decided -- an old approved/rejected row from months back
+  // shouldn't keep showing after the candidate has since re-requested (the
+  // limit(1)+order above already gets the most recent one, so a fresh
+  // request always supersedes a stale decided one).
+  const pendingException = pendingExceptionRow
+    ? {
+        id: pendingExceptionRow.id,
+        type: pendingExceptionRow.type,
+        status: pendingExceptionRow.status,
+        requestedAt: pendingExceptionRow.requested_at,
+        decisionNote: pendingExceptionRow.decision_note,
+      }
+    : null;
+
+  return (
+    <M03Booking
+      centres={centres ?? []}
+      slots={slots ?? []}
+      ninVerified={ninVerified}
+      existingBooking={existingBooking}
+      candidateId={candidate.id}
+      pendingException={pendingException}
+    />
+  );
 }

@@ -24,12 +24,107 @@ interface Slot {
   cbt_centre_id: string | null;
 }
 
-export function M03CentresSlots({ initialCentres, initialSlots }: { initialCentres: Centre[]; initialSlots: Slot[] }) {
+interface ExceptionRow {
+  id: string;
+  candidateName: string;
+  jqsNumber: string | null;
+  type: "centre_change" | "missed_window" | "duplicate_booking";
+  status: "pending" | "approved" | "rejected";
+  reason: string | null;
+  requestedAt: string;
+  decisionNote: string | null;
+  requestedSlotId: string | null;
+}
+
+const EXCEPTION_TYPE_LABEL: Record<ExceptionRow["type"], string> = {
+  centre_change: "Centre / time change",
+  missed_window: "Missed window",
+  duplicate_booking: "Duplicate booking",
+};
+
+function ExceptionCard({ exc, slots, onDecided }: { exc: ExceptionRow; slots: Slot[]; onDecided: (id: string, status: "approved" | "rejected") => void }) {
   const supabase = createClient();
-  const [tab, setTab] = useState<"centres" | "slots">("centres");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const requestedSlot = slots.find((s) => s.id === exc.requestedSlotId);
+
+  async function decide(decision: "approved" | "rejected") {
+    setBusy(true);
+    setError("");
+    const { error: err } = await supabase.rpc("approve_booking_exception", {
+      p_exception_id: exc.id,
+      p_decision: decision,
+      p_decision_note: note || null,
+    });
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    onDecided(exc.id, decision);
+  }
+
+  const statusColor = exc.status === "approved" ? "#058812" : exc.status === "rejected" ? "#9b2335" : "#e05c00";
+
+  return (
+    <div className="bg-white rounded-2xl p-5 shadow-elev-2">
+      <div className="flex items-center justify-between mb-1">
+        <div className="font-heading font-bold text-sm text-[#323232]">{exc.candidateName}</div>
+        <span className="text-[11px] font-heading font-bold px-3 py-1 rounded-full capitalize" style={{ background: `${statusColor}15`, color: statusColor }}>
+          {exc.status}
+        </span>
+      </div>
+      <div className="text-xs text-[#969696] mb-2">
+        {exc.jqsNumber ?? "No JQS number"} · {EXCEPTION_TYPE_LABEL[exc.type]} · {new Date(exc.requestedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+      </div>
+      {exc.reason && <p className="text-xs text-[#646464] mb-2">&quot;{exc.reason}&quot;</p>}
+      {requestedSlot && (
+        <p className="text-xs text-[#646464] mb-2">
+          Requested: {new Date(requestedSlot.starts_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos" })} ({requestedSlot.capacity - requestedSlot.booked_count} seats left)
+        </p>
+      )}
+      {exc.status !== "pending" && exc.decisionNote && <p className="text-xs text-[#969696] mb-2">Note: {exc.decisionNote}</p>}
+
+      {exc.status === "pending" && (
+        <>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note to the candidate" className="input text-xs py-1.5 w-full mb-2" />
+          {error && <div className="mb-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100">{error}</div>}
+          <div className="flex gap-2">
+            <button onClick={() => decide("approved")} disabled={busy} className="btn-primary text-xs px-3 py-1.5">
+              Approve
+            </button>
+            <button onClick={() => decide("rejected")} disabled={busy} className="btn-secondary text-xs px-3 py-1.5">
+              Reject
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function M03CentresSlots({
+  initialCentres,
+  initialSlots,
+  initialExceptions,
+}: {
+  initialCentres: Centre[];
+  initialSlots: Slot[];
+  initialExceptions: ExceptionRow[];
+}) {
+  const supabase = createClient();
+  const [tab, setTab] = useState<"centres" | "slots" | "exceptions">("centres");
   const [centres, setCentres] = useState(initialCentres);
   const [slots, setSlots] = useState(initialSlots);
+  const [exceptions, setExceptions] = useState(initialExceptions);
   const [error, setError] = useState("");
+
+  const pendingExceptionCount = exceptions.filter((e) => e.status === "pending").length;
+
+  function markDecided(id: string, status: "approved" | "rejected") {
+    setExceptions((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
+  }
 
   const [newCentre, setNewCentre] = useState({ name: "", state: "", zone: ZONES[0], capacity: 40 });
   const [savingCentre, setSavingCentre] = useState(false);
@@ -97,15 +192,23 @@ export function M03CentresSlots({ initialCentres, initialSlots }: { initialCentr
         <p className="text-sm text-[#646464]">Centres & Slot Allocation — Programme Manager</p>
       </div>
 
-      <div className="flex rounded-2xl p-1 mb-6 shadow-elev-1 bg-white max-w-xs">
-        {(["centres", "slots"] as const).map((t) => (
+      <div className="flex rounded-2xl p-1 mb-6 shadow-elev-1 bg-white max-w-lg">
+        {(["centres", "slots", "exceptions"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="flex-1 py-2 rounded-xl text-sm font-heading font-bold transition-all"
+            className="flex-1 py-2 rounded-xl text-sm font-heading font-bold transition-all relative"
             style={{ background: tab === t ? "#058812" : "transparent", color: tab === t ? "white" : "#969696" }}
           >
-            {t === "centres" ? "Centres" : "Slots"}
+            {t === "centres" ? "Centres" : t === "slots" ? "Slots" : "Exceptions"}
+            {t === "exceptions" && pendingExceptionCount > 0 && (
+              <span
+                className="ml-1.5 inline-flex items-center justify-center text-[10px] font-heading font-bold rounded-full w-4 h-4"
+                style={{ background: tab === t ? "white" : "#e05c00", color: tab === t ? "#058812" : "white" }}
+              >
+                {pendingExceptionCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -239,6 +342,20 @@ export function M03CentresSlots({ initialCentres, initialSlots }: { initialCentr
               {savingSlot ? "Adding…" : "Add Slot"}
             </button>
           </div>
+        </div>
+      )}
+
+      {tab === "exceptions" && (
+        <div className="space-y-4">
+          {exceptions.length === 0 && (
+            <div className="bg-white rounded-2xl p-8 shadow-elev-2 text-center text-sm text-[#969696]">No booking change requests yet.</div>
+          )}
+          {exceptions
+            .slice()
+            .sort((a, b) => (a.status === "pending") === (b.status === "pending") ? 0 : a.status === "pending" ? -1 : 1)
+            .map((exc) => (
+              <ExceptionCard key={exc.id} exc={exc} slots={slots} onDecided={markDecided} />
+            ))}
         </div>
       )}
     </div>
