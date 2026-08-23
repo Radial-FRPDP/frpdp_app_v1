@@ -1,11 +1,10 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 function SetPasswordForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/portal";
 
@@ -33,8 +32,11 @@ function SetPasswordForm() {
       setError(updateError.message);
       return;
     }
-    router.push(next);
-    router.refresh();
+    // Hard navigation — see the matching comment on the login forms
+    // (src/app/login/page.tsx): a client-side push right after an auth
+    // change can land on a stale Router Cache entry and bounce back to
+    // wherever it thought the user belonged before the password was set.
+    window.location.href = next;
   }
 
   return (

@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ORG_LOGIN_OPTIONS } from "@/lib/roles";
 import type { StaffOrg } from "@/lib/database.types";
 
 function CandidateLogin() {
-  const router = useRouter();
   const [jqs, setJqs] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -37,8 +35,13 @@ function CandidateLogin() {
       setError(body.error ?? "Sign-in failed.");
       return;
     }
-    router.push("/portal");
-    router.refresh();
+    // A hard navigation, not router.push()+router.refresh(). The auth
+    // cookie was just set by the POST above, but a client-side push can
+    // land on a stale Router Cache entry for /portal (e.g. one computed
+    // before this cookie existed) and bounce straight back to /login —
+    // exactly the "looks like it's navigating, then snaps back" symptom.
+    // A full page load always requests /portal fresh, cookie included.
+    window.location.href = "/portal";
   }
 
   return (
@@ -113,7 +116,6 @@ function CandidateLogin() {
 }
 
 function StaffLogin() {
-  const router = useRouter();
   const [selectedOrg, setSelectedOrg] = useState<StaffOrg | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -146,8 +148,8 @@ function StaffLogin() {
       setError(body.error ?? "Sign-in failed.");
       return;
     }
-    router.push("/portal");
-    router.refresh();
+    // Hard navigation — see the matching comment in CandidateLogin above.
+    window.location.href = "/portal";
   }
 
   async function handleForgot(e: React.FormEvent) {
