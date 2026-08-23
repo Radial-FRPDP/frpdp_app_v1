@@ -187,6 +187,20 @@ export function PortalShell({ role, user, notifications, candidateStatus, childr
       </div>
 
       <div className="p-4 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+        {role === "radial" && (
+          <Link
+            href="/portal/users"
+            onClick={() => setSidebarOpen(false)}
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-3 transition-colors"
+            style={{
+              background: pathname === "/portal/users" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
+              color: "rgba(255,255,255,0.75)",
+            }}
+          >
+            <span className="text-sm">👥</span>
+            <span className="text-[12px] font-heading font-semibold">Staff Users</span>
+          </Link>
+        )}
         <div className="flex items-center gap-3 mb-3">
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-heading font-bold text-white shrink-0"
@@ -244,10 +258,12 @@ export function PortalShell({ role, user, notifications, candidateStatus, childr
                 <span className="text-[#969696] font-heading">Field Readiness Programme</span>
                 <span className="text-[#D8D8D8]">/</span>
                 <span className="font-heading font-bold text-[#323232]">
-                  {currentMod?.code} — {currentMod?.title}
+                  {pathname === "/portal/users" ? "Staff Users" : `${currentMod?.code} — ${currentMod?.title}`}
                 </span>
               </div>
-              <div className="text-[11px] text-[#969696] mt-0.5">{currentMod?.subtitle}</div>
+              <div className="text-[11px] text-[#969696] mt-0.5">
+                {pathname === "/portal/users" ? "Access requests & staff accounts" : currentMod?.subtitle}
+              </div>
             </div>
 
             <div

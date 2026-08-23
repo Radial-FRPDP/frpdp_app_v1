@@ -115,6 +115,43 @@ export function cbtReminderEmail(fullName: string, startsAt: string, location: s
   );
 }
 
+export function staffInviteEmail(fullName: string, actionLink: string, orgLabel: string) {
+  return shell(
+    "Your Field Readiness Programme account is ready",
+    `<p style="font-size:14px;line-height:1.6;">Hi ${escapeHtml(fullName)},</p>
+     <p style="font-size:14px;line-height:1.6;">A Programme Manager at Radial Circle has set up your staff account for the Field Readiness Programme platform, under <b>${escapeHtml(
+       orgLabel
+     )}</b>.</p>
+     <p style="font-size:14px;line-height:1.6;">Use the secure link below to sign in and set your password:</p>
+     <p style="margin:20px 0;"><a href="${actionLink}" style="display:inline-block;background:#058812;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 22px;border-radius:8px;">Set my password &amp; sign in</a></p>
+     <p style="font-size:12px;line-height:1.6;color:#8a96a0;">This link expires soon. If you didn't expect this account, you can ignore this email.</p>`
+  );
+}
+
+export function accessRequestReceivedEmail(fullName: string, email: string, orgLabel: string, note: string | null) {
+  return shell(
+    "New access request",
+    `<p style="font-size:14px;line-height:1.6;"><b>${escapeHtml(fullName)}</b> (${escapeHtml(
+      email
+    )}) has requested a staff account under <b>${escapeHtml(orgLabel)}</b>.</p>
+     ${note ? `<p style="font-size:14px;line-height:1.6;">Note from requester: "${escapeHtml(note)}"</p>` : ""}
+     <p style="font-size:14px;line-height:1.6;">Review and approve or decline it from the Users screen in the Programme Manager portal.</p>`
+  );
+}
+
+export function accessRequestDecisionEmail(fullName: string, approved: boolean, decisionNote: string | null) {
+  return shell(
+    approved ? "Your access request was approved" : "Your access request was declined",
+    `<p style="font-size:14px;line-height:1.6;">Hi ${escapeHtml(fullName)},</p>
+     ${
+       approved
+         ? `<p style="font-size:14px;line-height:1.6;">Your request for a Field Readiness Programme staff account has been approved. A separate email with a sign-in link is on its way.</p>`
+         : `<p style="font-size:14px;line-height:1.6;">Your request for a Field Readiness Programme staff account was not approved at this time.</p>`
+     }
+     ${decisionNote ? `<p style="font-size:14px;line-height:1.6;">Note: ${escapeHtml(decisionNote)}</p>` : ""}`
+  );
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

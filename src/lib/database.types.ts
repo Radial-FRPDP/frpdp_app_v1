@@ -26,7 +26,9 @@ export type NotificationType =
   | "validation_report"
   | "cbt_confirmation"
   | "cbt_reminder"
-  | "nysc_flagged";
+  | "nysc_flagged"
+  | "staff_invite"
+  | "access_request";
 
 export type StaffOrg = "radial" | "ncdmb" | "renaissance" | "cbt";
 export type GeoZone =
@@ -44,6 +46,7 @@ export type BookingExceptionStatus = "pending" | "approved" | "rejected";
 export type ExamIncidentCategory = "device_failure" | "identity_mismatch" | "late_arrival" | "other";
 export type ExamIncidentSeverity = "low" | "medium" | "high";
 export type ExamIncidentStatus = "pending" | "reviewed" | "closed";
+export type AccessRequestStatus = "pending" | "approved" | "rejected";
 export interface ExamChoice {
   id: string;
   text: string;
@@ -396,6 +399,29 @@ export interface Database {
           category: ExamIncidentCategory;
         };
         Update: Partial<Database["public"]["Tables"]["exam_incidents"]["Row"]>;
+        Relationships: [];
+      };
+      access_requests: {
+        Row: {
+          id: string;
+          full_name: string;
+          email: string;
+          org: StaffOrg;
+          title: string | null;
+          cbt_centre_id: string | null;
+          note: string | null;
+          status: AccessRequestStatus;
+          requested_at: string;
+          reviewed_by: string | null;
+          reviewed_at: string | null;
+          decision_note: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["access_requests"]["Row"]> & {
+          full_name: string;
+          email: string;
+          org: StaffOrg;
+        };
+        Update: Partial<Database["public"]["Tables"]["access_requests"]["Row"]>;
         Relationships: [];
       };
     };
