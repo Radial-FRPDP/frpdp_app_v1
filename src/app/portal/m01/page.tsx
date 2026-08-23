@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getPortalSession } from "@/lib/portal/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { M01Intake } from "@/components/portal/radial/M01Intake";
 import { M01Welcome } from "@/components/portal/candidate/M01Welcome";
 import { ComingSoon } from "@/components/portal/ComingSoon";
@@ -10,12 +10,24 @@ export default async function PortalM01Page() {
   if (!session) redirect("/login");
 
   if (session.role === "radial") {
-    const supabase = await createServerSupabaseClient();
-    const { data: candidates } = await supabase
+    // getPortalSession() above has already confirmed this signed-in user's
+    // staff_profiles.org is "radial" -- that's the real authorization
+    // check for this branch. Read with the service-role client (bypasses
+    // RLS) rather than the session-bound one: this list previously came
+    // back empty for real Programme Manager accounts even though the
+    // rows existed, most likely a mismatch between how the RLS helper
+    // resolves the caller and how the session cookie carries it through
+    // a Server Component. Using service-role here matches the same
+    // trusted-backend pattern the intake upload route already uses for
+    // writes, and removes that whole class of "should show data but
+    // doesn't" bug for a page that's already access-gated above.
+    const supabase = createServiceRoleClient();
+    const { data: candidates, error } = await supabase
       .from("candidates")
       .select("id, full_name, email, phone, jqs_number, gender, discipline, status, created_at, batches(filename)")
       .order("created_at", { ascending: false })
       .limit(1000);
+    if (error) console.error("M-01 candidate list fetch failed:", error.message);
 
     type Joined = {
       id: string;

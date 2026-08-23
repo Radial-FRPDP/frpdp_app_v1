@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 type WorkflowStep = "upload" | "validate" | "review" | "summary" | "dispatch";
 
@@ -96,7 +95,6 @@ function CandidateListView({
   onDeleted: (ids: string[]) => void;
   onStartUpload: () => void;
 }) {
-  const supabase = createClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -143,13 +141,19 @@ function CandidateListView({
     setDeleting(true);
     setError("");
     const ids = Array.from(selected);
-    const { error: err } = await supabase.from("candidates").delete().in("id", ids);
+    const res = await fetch("/api/candidates/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
     setDeleting(false);
-    if (err) {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: "Delete failed" }));
+      const message: string = body.error ?? "Delete failed";
       setError(
-        err.message.includes("foreign key")
+        message.includes("foreign key")
           ? "Couldn't delete one or more of these — another record (e.g. a duplicate flagged against one of them) still references it."
-          : err.message
+          : message
       );
       return;
     }
