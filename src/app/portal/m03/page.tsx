@@ -30,7 +30,7 @@ export default async function PortalM03Page() {
       db.from("candidates").select("id, zone, profiles(nin_verification_status, bvn_verification_status, nysc_review_status)"),
       db.from("bookings").select("candidate_id").eq("status", "confirmed"),
       db.from("cbt_centres").select("id, name").order("name"),
-      db.from("cbt_slots").select("id, cbt_centre_id, booked_count"),
+      db.from("cbt_slots").select("id, cbt_centre_id, booked_count, starts_at"),
     ]);
 
     type Row = { id: string; zone: string | null; profiles: { nin_verification_status: string; bvn_verification_status: string; nysc_review_status: string } | null };
@@ -65,8 +65,25 @@ export default async function PortalM03Page() {
       candidatesSeated: slotsByCentre.get(c.id)?.seated ?? 0,
     }));
 
+    const now = new Date();
+    const upcomingStarts = (slots ?? [])
+      .map((s) => s.starts_at)
+      .filter((s): s is string => !!s && new Date(s) > now)
+      .sort();
+    const nextSession = upcomingStarts[0] ?? null;
+    const lastSession = upcomingStarts.length > 0 ? upcomingStarts[upcomingStarts.length - 1] : null;
+
     if (session.role === "ncdmb") {
-      return <NCDMBM03 eligibleCount={cleared.length} bookingsConfirmed={bookedCleared.length} centres={centreRows} zones={zones} />;
+      return (
+        <NCDMBM03
+          eligibleCount={cleared.length}
+          bookingsConfirmed={bookedCleared.length}
+          centres={centreRows}
+          zones={zones}
+          nextSession={nextSession}
+          lastSession={lastSession}
+        />
+      );
     }
 
     return <RenaissanceM03 clearedForCbt={cleared.length} booked={bookedCleared.length} centreNames={(centres ?? []).map((c) => c.name)} />;

@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 export interface ZoneClearanceRow {
   zone: string;
   invited: number;
@@ -35,7 +39,13 @@ function pct(part: number, total: number) {
   return Math.round((part / total) * 100);
 }
 
+const TABS = [
+  { id: "overview" as const, label: "Zonal Overview" },
+  { id: "verification" as const, label: "Verification Status" },
+];
+
 export function NCDMBM02({ totalInvited, profilesSubmitted, cleared, flagged, zones, disciplines, verification, generatedAt }: Props) {
+  const [tab, setTab] = useState<"overview" | "verification">("overview");
   const totalDiscipline = disciplines.reduce((a, d) => a + d.count, 0) || 1;
   const overallPct = pct(cleared, profilesSubmitted);
 
@@ -98,94 +108,115 @@ export function NCDMBM02({ totalInvited, profilesSubmitted, cleared, flagged, zo
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5 mb-5">
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-elev-2 overflow-hidden">
-          <div className="px-6 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
-            <h3 className="font-heading font-bold text-sm text-[#323232]">Zone-by-Zone Clearance Rate</h3>
-            <p className="text-xs text-[#969696] mt-0.5">Invited → Submitted → Cleared</p>
-          </div>
-          <div className="p-6 space-y-4">
-            {zones.length === 0 && <p className="text-sm text-[#969696]">No candidates recorded with a zone yet.</p>}
-            {zones.map((z) => {
-              const zPct = pct(z.cleared, z.invited);
-              return (
-                <div key={z.zone}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="font-heading font-semibold text-sm text-[#323232]">{z.zone}</div>
-                    <div className="text-[11px] text-[#969696]">
-                      {z.cleared} cleared / {z.invited} invited
+      <div className="flex gap-2 mb-5">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="px-5 py-2.5 rounded-xl text-sm font-heading font-bold transition-all"
+            style={{
+              background: tab === t.id ? "#1B4F8A" : "white",
+              color: tab === t.id ? "white" : "#646464",
+              boxShadow: tab === t.id ? "none" : "0 1px 4px rgba(0,0,0,0.06)",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div className="grid lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 bg-white rounded-2xl shadow-elev-2 overflow-hidden">
+            <div className="px-6 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
+              <h3 className="font-heading font-bold text-sm text-[#323232]">Zone-by-Zone Clearance Rate</h3>
+              <p className="text-xs text-[#969696] mt-0.5">Invited → Submitted → Cleared</p>
+            </div>
+            <div className="p-6 space-y-4">
+              {zones.length === 0 && <p className="text-sm text-[#969696]">No candidates recorded with a zone yet.</p>}
+              {zones.map((z) => {
+                const zPct = pct(z.cleared, z.invited);
+                return (
+                  <div key={z.zone}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="font-heading font-semibold text-sm text-[#323232]">{z.zone}</div>
+                      <div className="text-[11px] text-[#969696]">
+                        {z.cleared} cleared / {z.invited} invited
+                      </div>
+                    </div>
+                    <div className="w-full rounded-full h-2.5 overflow-hidden" style={{ background: "#f4f4f4" }}>
+                      <div
+                        className="h-2.5 rounded-full"
+                        style={{ width: `${zPct}%`, background: zPct >= 50 ? "#058812" : zPct >= 40 ? "#1B4F8A" : "#e05c00" }}
+                      />
+                    </div>
+                    <div className="flex gap-3 mt-1 text-[10px] text-[#969696]">
+                      <span className="font-bold" style={{ color: zPct >= 50 ? "#058812" : zPct >= 40 ? "#1B4F8A" : "#e05c00" }}>
+                        {zPct}% clearance
+                      </span>
+                      <span>{z.submitted} submitted</span>
                     </div>
                   </div>
-                  <div className="w-full rounded-full h-2.5 overflow-hidden" style={{ background: "#f4f4f4" }}>
-                    <div
-                      className="h-2.5 rounded-full"
-                      style={{ width: `${zPct}%`, background: zPct >= 50 ? "#058812" : zPct >= 40 ? "#1B4F8A" : "#e05c00" }}
-                    />
-                  </div>
-                  <div className="flex gap-3 mt-1 text-[10px] text-[#969696]">
-                    <span className="font-bold" style={{ color: zPct >= 50 ? "#058812" : zPct >= 40 ? "#1B4F8A" : "#e05c00" }}>
-                      {zPct}% clearance
-                    </span>
-                    <span>{z.submitted} submitted</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-elev-2 overflow-hidden">
-          <div className="px-5 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
-            <h3 className="font-heading font-bold text-sm text-[#323232]">By Discipline</h3>
-          </div>
-          <div className="p-5 space-y-3">
-            {disciplines.length === 0 && <p className="text-xs text-[#969696]">No discipline data yet.</p>}
-            {disciplines.map((d, i) => {
-              const colors = ["#058812", "#1B4F8A", "#FBBD15", "#e05c00", "#969696"];
-              const dPct = Math.round((d.count / totalDiscipline) * 100);
-              return (
-                <div key={d.discipline}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[11px] font-heading font-semibold text-[#323232]">{d.discipline}</span>
-                    <span className="text-[11px] text-[#969696]">{dPct}%</span>
-                  </div>
-                  <div className="w-full rounded-full h-2 overflow-hidden" style={{ background: "#f4f4f4" }}>
-                    <div className="h-2 rounded-full" style={{ width: `${dPct}%`, background: colors[i % colors.length] }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {verification.map((item) => {
-          const vPct = pct(item.count, item.total);
-          return (
-            <div key={item.title} className="bg-white rounded-2xl shadow-elev-2 p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-2xl">{item.icon}</span>
-                <div>
-                  <h4 className="font-heading font-bold text-sm text-[#323232]">{item.title}</h4>
-                  <p className="text-[11px] text-[#969696] mt-0.5">{item.detail}</p>
-                </div>
-              </div>
-              <div className="flex items-end justify-between mb-2">
-                <div className="font-heading font-extrabold text-3xl" style={{ color: item.color }}>
-                  {item.count}
-                </div>
-                <div className="text-sm font-heading font-bold" style={{ color: item.color }}>
-                  {vPct}%
-                </div>
-              </div>
-              <div className="w-full rounded-full h-2 overflow-hidden" style={{ background: "#f4f4f4" }}>
-                <div className="h-2 rounded-full transition-all" style={{ width: `${vPct}%`, background: item.color }} />
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-elev-2 overflow-hidden">
+            <div className="px-5 py-4 border-b" style={{ borderColor: "#f4f4f4" }}>
+              <h3 className="font-heading font-bold text-sm text-[#323232]">By Discipline</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              {disciplines.length === 0 && <p className="text-xs text-[#969696]">No discipline data yet.</p>}
+              {disciplines.map((d, i) => {
+                const colors = ["#058812", "#1B4F8A", "#FBBD15", "#e05c00", "#969696"];
+                const dPct = Math.round((d.count / totalDiscipline) * 100);
+                return (
+                  <div key={d.discipline}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[11px] font-heading font-semibold text-[#323232]">{d.discipline}</span>
+                      <span className="text-[11px] text-[#969696]">{dPct}%</span>
+                    </div>
+                    <div className="w-full rounded-full h-2 overflow-hidden" style={{ background: "#f4f4f4" }}>
+                      <div className="h-2 rounded-full" style={{ width: `${dPct}%`, background: colors[i % colors.length] }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "verification" && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {verification.map((item) => {
+            const vPct = pct(item.count, item.total);
+            return (
+              <div key={item.title} className="bg-white rounded-2xl shadow-elev-2 p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-2xl">{item.icon}</span>
+                  <div>
+                    <h4 className="font-heading font-bold text-sm text-[#323232]">{item.title}</h4>
+                    <p className="text-[11px] text-[#969696] mt-0.5">{item.detail}</p>
+                  </div>
+                </div>
+                <div className="flex items-end justify-between mb-2">
+                  <div className="font-heading font-extrabold text-3xl" style={{ color: item.color }}>
+                    {item.count}
+                  </div>
+                  <div className="text-sm font-heading font-bold" style={{ color: item.color }}>
+                    {vPct}%
+                  </div>
+                </div>
+                <div className="w-full rounded-full h-2 overflow-hidden" style={{ background: "#f4f4f4" }}>
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${vPct}%`, background: item.color }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

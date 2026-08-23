@@ -87,7 +87,7 @@ export default async function PortalM01Page() {
       supabase
         .from("candidates")
         .select("id, jqs_number, full_name, discipline, state_of_origin, date_of_birth, validation_issues, duplicate_of, duplicate_decision, status, created_at"),
-      supabase.from("batches").select("filename").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("batches").select("filename, created_at").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("staff_profiles").select("full_name").eq("org", "radial").order("created_at", { ascending: true }).limit(1).maybeSingle(),
     ]);
     const rows = candidates ?? [];
@@ -109,6 +109,7 @@ export default async function PortalM01Page() {
       return (
         <NCDMBM01
           batchFilename={latestBatch?.filename ?? null}
+          batchUploadedAt={latestBatch?.created_at ?? null}
           stats={{
             totalNominated: rows.length,
             duplicatesFlagged: duplicateRows.length,

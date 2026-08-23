@@ -15,6 +15,8 @@ interface Props {
   bookingsConfirmed: number;
   centres: CentreSummaryRow[];
   zones: ZoneBookingRow[];
+  nextSession: string | null;
+  lastSession: string | null;
 }
 
 function pct(part: number, total: number) {
@@ -22,7 +24,12 @@ function pct(part: number, total: number) {
   return Math.round((part / total) * 100);
 }
 
-export function NCDMBM03({ eligibleCount, bookingsConfirmed, centres, zones }: Props) {
+function formatDate(iso: string | null) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function NCDMBM03({ eligibleCount, bookingsConfirmed, centres, zones, nextSession, lastSession }: Props) {
   const notYetBooked = Math.max(0, eligibleCount - bookingsConfirmed);
   const bookingRate = pct(bookingsConfirmed, eligibleCount);
 
@@ -114,6 +121,32 @@ export function NCDMBM03({ eligibleCount, bookingsConfirmed, centres, zones }: P
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-elev-2 p-5">
+            <h3 className="font-heading font-bold text-sm text-[#323232] mb-4">Schedule Milestones</h3>
+            {!nextSession ? (
+              <p className="text-xs text-[#969696]">No CBT sessions scheduled yet.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#1B4F8A" }} />
+                  <div>
+                    <p className="text-[12px] font-heading font-semibold text-[#323232]">Next CBT session</p>
+                    <p className="text-[10px] text-[#969696]">{formatDate(nextSession)}</p>
+                  </div>
+                </div>
+                {lastSession && lastSession !== nextSession && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#D8D8D8" }} />
+                    <div>
+                      <p className="text-[12px] font-heading font-semibold text-[#323232]">Last scheduled session</p>
+                      <p className="text-[10px] text-[#969696]">{formatDate(lastSession)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
