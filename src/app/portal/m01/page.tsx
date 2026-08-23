@@ -3,7 +3,10 @@ import { getPortalSession } from "@/lib/portal/session";
 import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { M01Intake } from "@/components/portal/radial/M01Intake";
 import { M01Welcome } from "@/components/portal/candidate/M01Welcome";
+import { NCDMBM01 } from "@/components/portal/ncdmb/NCDMBM01";
+import { RenaissanceM01 } from "@/components/portal/renaissance/RenaissanceM01";
 import { ComingSoon } from "@/components/portal/ComingSoon";
+import { isDuplicate, isAgeIssue, isEmailIssue, isReady } from "@/lib/candidate-classification";
 
 export default async function PortalM01Page() {
   const session = await getPortalSession();
@@ -74,6 +77,75 @@ export default async function PortalM01Page() {
     return <M01Welcome candidate={candidate} />;
   }
 
-  // NCDMB / Renaissance / CBT read-only oversight for M-01 isn't built yet.
+  if (session.role === "ncdmb" || session.role === "renaissance") {
+    // Same trusted-backend read pattern as the radial branch above: role
+    // has already been verified by getPortalSession(), so this reads via
+    // service-role rather than depending on RLS to independently re-derive
+    // the same authorization for every table these dashboards touch.
+    const supabase = createServiceRoleClient();
+    const [{ data: candidates }, { data: latestBatch }, { data: pmRow }] = await Promise.all([
+      supabase
+        .from("candidates")
+        .select("id, jqs_number, full_name, discipline, state_of_origin, date_of_birth, validation_issues, duplicate_of, duplicate_decision, status, created_at"),
+      supabase.from("batches").select("filename").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("staff_profiles").select("full_name").eq("org", "radial").order("created_at", { ascending: true }).limit(1).maybeSingle(),
+    ]);
+    const rows = candidates ?? [];
+
+    const duplicateRows = rows.filter(isDuplicate);
+    const ageIneligibleRows = rows.filter((r) => isAgeIssue(r) && !isDuplicate(r));
+    const missingEmailRows = rows.filter((r) => isEmailIssue(r) && !isDuplicate(r) && !isAgeIssue(r));
+    const readyRows = rows.filter(isReady);
+    const invitedOrBeyond = rows.filter((r) => r.status !== "pending_review");
+
+    const disciplineCounts = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.discipline) continue;
+      disciplineCounts.set(r.discipline, (disciplineCounts.get(r.discipline) ?? 0) + 1);
+    }
+    const disciplines = [...disciplineCounts.entries()].map(([discipline, count]) => ({ discipline, count })).sort((a, b) => b.count - a.count);
+
+    if (session.role === "ncdmb") {
+      return (
+        <NCDMBM01
+          batchFilename={latestBatch?.filename ?? null}
+          stats={{
+            totalNominated: rows.length,
+            duplicatesFlagged: duplicateRows.length,
+            ageIneligible: ageIneligibleRows.length,
+            readyToInvite: readyRows.length,
+            missingEmail: missingEmailRows.length,
+            invitedOrBeyond: invitedOrBeyond.length,
+          }}
+          duplicates={duplicateRows.map((r) => ({
+            id: r.id,
+            jqsNumber: r.jqs_number,
+            name: r.full_name,
+            dob: r.date_of_birth,
+            discipline: r.discipline,
+            state: r.state_of_origin,
+            reason: (r.validation_issues ?? []).join("; ") || "Matches an existing candidate record",
+            decision: (r.duplicate_decision ?? "pending") as "pending" | "replace" | "discard",
+          }))}
+          disciplines={disciplines}
+          generatedAt={new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+        />
+      );
+    }
+
+    return (
+      <RenaissanceM01
+        totalNominated={rows.length}
+        duplicatesFlagged={duplicateRows.length}
+        ageIneligible={ageIneligibleRows.length}
+        readyOrBeyond={readyRows.length + invitedOrBeyond.length}
+        disciplines={disciplines}
+        pmName={pmRow?.full_name ?? null}
+      />
+    );
+  }
+
+  // CBT read-only oversight for M-01 isn't built yet -- CBT officers work
+  // through M-03/M-04 only (see roles.ts's module access list).
   return <ComingSoon moduleCode="M-01" moduleTitle="Intake" />;
 }
