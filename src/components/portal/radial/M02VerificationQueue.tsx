@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { MessageThread, type MessageRow } from "@/components/portal/MessageThread";
 
 interface QueueRow {
   candidateId: string;
@@ -14,6 +16,78 @@ interface QueueRow {
   bvnStatus: string;
   nyscCertNumber: string | null;
   nyscStatus: string;
+}
+
+/**
+ * Message Centre (M-02) -- picks from the same on-hold/flagged candidate
+ * list already on this page (rows = submitted profiles not yet fully
+ * verified), rather than a separate "search all candidates" UI, since
+ * that's exactly who the reference's Message Centre is for. Messages for
+ * whichever candidate is selected are loaded on demand (messages_radial_all
+ * RLS, 0012) rather than prefetched for every row up front.
+ */
+function MessagesTab({ rows }: { rows: QueueRow[] }) {
+  const supabase = createClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function selectCandidate(id: string) {
+    setSelectedId(id);
+    setLoading(true);
+    const { data } = await supabase
+      .from("messages")
+      .select("id, sender_role, body, created_at")
+      .eq("candidate_id", id)
+      .order("created_at", { ascending: true });
+    setMessages(data ?? []);
+    setLoading(false);
+  }
+
+  const selected = rows.find((r) => r.candidateId === selectedId);
+
+  return (
+    <div className="grid lg:grid-cols-[280px_1fr] gap-5">
+      <div className="bg-white rounded-2xl shadow-elev-2 overflow-hidden">
+        <div className="px-4 py-3 border-b" style={{ borderColor: "#f4f4f4" }}>
+          <h4 className="text-[11px] font-heading font-bold uppercase tracking-wider text-[#969696]">On Hold / Flagged</h4>
+        </div>
+        <div className="divide-y max-h-[420px] overflow-y-auto" style={{ borderColor: "#f4f4f4" }}>
+          {rows.length === 0 && <p className="p-4 text-xs text-[#969696]">Nobody on hold right now.</p>}
+          {rows.map((r) => (
+            <button
+              key={r.candidateId}
+              onClick={() => selectCandidate(r.candidateId)}
+              className="w-full text-left p-4 transition-colors"
+              style={{ background: selectedId === r.candidateId ? "#05881208" : "white" }}
+            >
+              <div className="font-heading font-semibold text-sm text-[#323232]">{r.fullName}</div>
+              <div className="text-xs text-[#969696]">{r.jqsNumber ?? r.email}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        {!selectedId && (
+          <div className="bg-white rounded-2xl p-8 shadow-elev-2 text-center text-sm text-[#969696]" style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            Pick a candidate to view or start a conversation.
+          </div>
+        )}
+        {selectedId && loading && (
+          <div className="bg-white rounded-2xl p-8 shadow-elev-2 text-center text-sm text-[#969696]" style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            Loading…
+          </div>
+        )}
+        {selectedId && !loading && (
+          <>
+            <p className="text-xs text-[#969696] mb-2">Conversation with {selected?.fullName}</p>
+            <MessageThread key={selectedId} candidateId={selectedId} senderRole="radial" initialMessages={messages} />
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const FIELD_LABEL: Record<string, string> = { nin: "NIN", bvn: "BVN", nysc: "NYSC" };
@@ -97,6 +171,7 @@ function ReviewField({
 export function M02VerificationQueue({ initialRows }: { initialRows: QueueRow[] }) {
   const router = useRouter();
   const [rows] = useState(initialRows);
+  const [tab, setTab] = useState<"queue" | "messages">("queue");
 
   function refresh() {
     router.refresh();
@@ -116,6 +191,23 @@ export function M02VerificationQueue({ initialRows }: { initialRows: QueueRow[] 
         </p>
       </div>
 
+      <div className="flex rounded-2xl p-1 mb-6 shadow-elev-1 bg-white max-w-xs">
+        {(["queue", "messages"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="flex-1 py-2 rounded-xl text-sm font-heading font-bold transition-all"
+            style={{ background: tab === t ? "#058812" : "transparent", color: tab === t ? "white" : "#969696" }}
+          >
+            {t === "queue" ? "Verification Queue" : "Messages"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "messages" ? (
+        <MessagesTab rows={rows} />
+      ) : (
+        <>
       {rows.length === 0 && (
         <div className="bg-white rounded-2xl p-8 shadow-elev-2 text-center text-sm text-[#969696]">Nothing pending — every submitted profile has been reviewed.</div>
       )}
@@ -163,6 +255,8 @@ export function M02VerificationQueue({ initialRows }: { initialRows: QueueRow[] 
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }

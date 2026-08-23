@@ -174,10 +174,11 @@ export default async function PortalM02Page() {
   // yet shouldn't be able to jump straight here via a direct URL.
   if (!session.candidateNominationConfirmed) redirect("/portal/m01");
 
-  const [{ data: profile }, { data: documents }] = await Promise.all([
+  const [{ data: profile }, { data: documents }, { data: messages }] = await Promise.all([
     supabase.from("profiles").select("*").eq("candidate_id", candidate.id).maybeSingle(),
     supabase.from("documents").select("id, doc_type, storage_path").eq("candidate_id", candidate.id),
+    supabase.from("messages").select("id, sender_role, body, created_at").eq("candidate_id", candidate.id).order("created_at", { ascending: true }),
   ]);
 
-  return <M02Profile candidate={candidate} profile={profile} documents={documents ?? []} />;
+  return <M02Profile candidate={candidate} profile={profile} documents={documents ?? []} initialMessages={messages ?? []} />;
 }

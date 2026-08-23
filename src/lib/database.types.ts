@@ -401,6 +401,23 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["exam_incidents"]["Row"]>;
         Relationships: [];
       };
+      messages: {
+        Row: {
+          id: string;
+          candidate_id: string;
+          sender_role: "radial" | "candidate";
+          sender_staff_id: string | null;
+          body: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["messages"]["Row"]> & {
+          candidate_id: string;
+          sender_role: "radial" | "candidate";
+          body: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["messages"]["Row"]>;
+        Relationships: [];
+      };
       access_requests: {
         Row: {
           id: string;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { DocType } from "@/lib/database.types";
 import { NIGERIA_STATES } from "@/lib/nigeria-zones";
+import { MessageThread, type MessageRow } from "@/components/portal/MessageThread";
 
 type WizardStep = "personal" | "identity" | "documents" | "submit";
 
@@ -101,7 +102,17 @@ function StepIndicator({ current }: { current: WizardStep }) {
   );
 }
 
-export function M02Profile({ candidate, profile, documents }: { candidate: Candidate; profile: ProfileRow | null; documents: DocumentRow[] }) {
+export function M02Profile({
+  candidate,
+  profile,
+  documents,
+  initialMessages,
+}: {
+  candidate: Candidate;
+  profile: ProfileRow | null;
+  documents: DocumentRow[];
+  initialMessages: MessageRow[];
+}) {
   const router = useRouter();
   const supabase = createClient();
   const [step, setStep] = useState<WizardStep>("personal");
@@ -262,6 +273,12 @@ export function M02Profile({ candidate, profile, documents }: { candidate: Candi
           <a href="/portal/m03" className="inline-block px-6 py-3 rounded-xl text-white text-sm font-heading font-bold" style={{ background: "#058812" }}>
             Continue to CBT Booking →
           </a>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="font-heading font-bold text-sm text-[#323232] mb-2">Message Radial Circle</h3>
+          <p className="text-xs text-[#969696] mb-3">Question about your review, or something to flag? Send a message here — the programme team will reply here too.</p>
+          <MessageThread candidateId={candidate.id} senderRole="candidate" initialMessages={initialMessages} />
         </div>
       </div>
     );
